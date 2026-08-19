@@ -208,7 +208,14 @@ if ! ensure_pm2; then
   exit 1
 fi
 echo "[deploy] pm2: $(command -v pm2)"
-echo "[deploy] pm2 restart all"
-pm2 restart all
+ECOSYSTEM="$APP_DIR/ecosystem.config.cjs"
+if pm2 describe oatstone >/dev/null 2>&1; then
+  echo "[deploy] pm2 restart oatstone"
+  pm2 restart oatstone --update-env
+else
+  echo "[deploy] no existing pm2 process, starting new"
+  pm2 start "$ECOSYSTEM"
+fi
+pm2 save
 
 echo "[deploy] success $(date -Is)"
