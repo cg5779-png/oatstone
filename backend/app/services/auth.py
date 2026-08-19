@@ -11,12 +11,16 @@ bearer = HTTPBearer(auto_error=False)
 
 
 def verify_credentials(username: str, password: str) -> bool:
+    if not ADMIN_PASSWORD or not JWT_SECRET:
+        return False
     user_ok = hmac.compare_digest(username, ADMIN_USERNAME)
     pass_ok = hmac.compare_digest(password, ADMIN_PASSWORD)
     return user_ok and pass_ok
 
 
 def create_access_token(username: str) -> str:
+    if not JWT_SECRET:
+        raise HTTPException(status_code=503, detail="관리자 인증이 설정되지 않았습니다. backend/.env에 JWT_SECRET을 입력해 주세요.")
     payload = {
         "sub": username,
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS),
@@ -25,6 +29,8 @@ def create_access_token(username: str) -> str:
 
 
 def decode_access_token(token: str) -> str:
+    if not JWT_SECRET:
+        raise HTTPException(status_code=503, detail="관리자 인증이 설정되지 않았습니다. backend/.env에 JWT_SECRET을 입력해 주세요.")
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
     except jwt.PyJWTError as exc:

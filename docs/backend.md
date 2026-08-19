@@ -276,7 +276,7 @@ files: File[]
 - 토큰이 없거나 스킴이 `Bearer`가 아니거나 검증 실패 시 `401 {"detail": "로그인이 필요합니다."}`
 - 프론트(`adminApi.ts`)는 401 응답을 받으면 저장된 토큰을 지우고 로그인 페이지로 되돌린다
 
-**보안 주의:** `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `JWT_SECRET`은 저장소의 `.env.example`과 `config.py` 기본값에 예시 값이 들어 있다. **운영 배포 전 반드시 강력한 값으로 교체**하고, 실제 `.env`는 절대 커밋하지 않는다.
+**보안 설계:** `ADMIN_PASSWORD` / `JWT_SECRET`은 `config.py`에 기본값이 없다(빈 문자열). `.env`에 값을 채우지 않으면 `verify_credentials()`가 항상 `False`를 반환해 로그인이 막히고, 토큰 발급/검증도 `503`으로 거부된다 — 즉 미설정 상태로는 관리자 화면에 접근할 수 없다. `ADMIN_USERNAME`만 예시 기본값(`oat4243`)을 유지하며, `.env.example`의 나머지 값은 전부 `change_me` 플레이스홀더이므로 그대로는 로그인할 수 없다. 실제 `.env`는 절대 커밋하지 않는다.
 
 ---
 
@@ -390,8 +390,9 @@ AdminPortfolioList/Editor → adminApi.ts(Authorization 헤더 자동 첨부) �
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USE_SSL` | `smtp.naver.com` / `465` / `true` | SMTP 서버 설정 |
 | `SMTP_USER` / `SMTP_PASSWORD` | — (필수) | 발송 계정 / 앱 비밀번호 |
 | `SMTP_FROM` | `SMTP_USER` | From 헤더 |
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | — (필수, 운영 시 교체) | 관리자 로그인 자격 증명 |
-| `JWT_SECRET` | — (필수, 운영 시 교체) | JWT 서명 키 |
+| `ADMIN_USERNAME` | `oat4243` | 관리자 로그인 아이디 |
+| `ADMIN_PASSWORD` | — (필수, 미설정 시 로그인 항상 실패) | 관리자 로그인 비밀번호 |
+| `JWT_SECRET` | — (필수, 미설정 시 토큰 발급/검증 503) | JWT 서명 키 |
 | `JWT_EXPIRE_HOURS` | `12` | 토큰 만료 시간 |
 | `UPLOAD_DIR` | `backend/uploads` | 관리자 업로드 이미지 저장 경로 |
 

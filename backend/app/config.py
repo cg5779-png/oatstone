@@ -22,8 +22,8 @@ SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER or INQUIRY_RECIPIENT)
 SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "true").lower() == "true"
 
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "oat4243")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "stone0806")
-JWT_SECRET = os.getenv("JWT_SECRET", "oatstone-dev-jwt-secret-change-me")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "12"))
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
