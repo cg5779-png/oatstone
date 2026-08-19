@@ -36,9 +36,8 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 20m
           script: |
-            set -euo pipefail
             chmod +x /tmp/deploy.sh
-            bash -lc '/tmp/deploy.sh'
+            /tmp/deploy.sh
 
       - name: Deploy succeeded
         run: echo "Deployment finished successfully."

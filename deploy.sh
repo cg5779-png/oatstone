@@ -6,18 +6,13 @@ APP_DIR="/var/www/oatstone.co.kr"
 echo "[deploy] start $(date -Is)"
 
 # GitHub Actions SSH는 로그인 셸이 아니라 PATH가 짧다.
+# /etc/profile 은 읽지 않는다. set -u 와 debuginfod.sh 의 DEBUGINFOD_URLS 가 충돌한다.
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${HOME}/.local/bin:${PATH:-}"
-if [ -f /etc/profile ]; then
-  # shellcheck disable=SC1091
-  . /etc/profile
-fi
-if [ -f "${HOME}/.profile" ]; then
-  # shellcheck disable=SC1090
-  . "${HOME}/.profile"
-fi
 if [ -s "${HOME}/.nvm/nvm.sh" ]; then
+  set +u
   # shellcheck disable=SC1091
   . "${HOME}/.nvm/nvm.sh"
+  set -u
 fi
 
 if [ ! -d "$APP_DIR/.git" ]; then
