@@ -1,4 +1,4 @@
-"""SQLite 데이터베이스 초기화 및 포트폴리오 시드."""
+"""SQLite / PostgreSQL 데이터베이스 초기화 및 포트폴리오 시드."""
 
 from __future__ import annotations
 
@@ -6,9 +6,10 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal, init_db, verify_db_schema
+from app.database import SessionLocal, engine, init_db, verify_db_schema
 from app.models.project import Project, ProjectImage
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -100,7 +101,22 @@ def seed_projects(db: Session) -> tuple[int, int]:
             )
 
     db.commit()
+    _reset_postgres_sequences(db)
     return db.query(Project).count(), db.query(ProjectImage).count()
+
+
+def _reset_postgres_sequences(db: Session) -> None:
+    """명시적 id로 시드한 뒤 PostgreSQL 시퀀스를 MAX(id)에 맞춘다."""
+    if engine.dialect.name != "postgresql":
+        return
+    for table in ("projects", "project_images"):
+        db.execute(
+            text(
+                f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+                f"COALESCE((SELECT MAX(id) FROM {table}), 1))"
+            )
+        )
+    db.commit()
 
 
 def main() -> None:
@@ -112,8 +128,11 @@ def main() -> None:
     finally:
         db.close()
 
-    print("[OK] OATSTONE SQLite database ready")
-    print(f"   path     : {info['database_path'] or db_path}")
+    print("[OK] OATSTONE database ready")
+    print(f"   dialect  : {info['dialect']}")
+    print(f"   url      : {info['database_url']}")
+    if info["database_path"] or db_path:
+        print(f"   path     : {info['database_path'] or db_path}")
     print(f"   tables   : {', '.join(sorted(info['tables']))}")
     print(f"   projects : {project_count} rows, {image_count} images")
     for table, indexes in info["table_indexes"].items():

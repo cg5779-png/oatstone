@@ -9,7 +9,7 @@
 | 회사명 | OATSTONE (Outset · Attitude · Tone) |
 | 목표 | 브랜드 신뢰 구축 + 의뢰 전환 + 포트폴리오 자체 관리 |
 | UI 방향 | Instagram 스타일 — 심플, 이미지 중심 |
-| 기술 스택 | React 18 + Vite + TypeScript (프론트), FastAPI + SQLAlchemy + Alembic (백엔드), SQLite (DB) |
+| 기술 스택 | React 18 + Vite + TypeScript (프론트), FastAPI + SQLAlchemy + Alembic (백엔드), SQLite(로컬) / PostgreSQL(서버) |
 
 ## 2. 구현 현황
 
@@ -20,7 +20,7 @@
 | Contact 문의 API + SMTP 메일 발송 | ✅ 완료 |
 | 관리자 로그인(JWT) | ✅ 완료 |
 | 관리자 포트폴리오 CRUD + 이미지 업로드 | ✅ 완료 |
-| 배포 자동화(CI/CD) | ⛔ 미구성 — 수동 배포 필요 |
+| 배포 자동화(CI/CD) | ✅ GitHub Actions → GHCR Docker 이미지 |
 
 세부 명세는 각 문서를 참고한다.
 
@@ -28,7 +28,7 @@
 |------|------|
 | [docs/front.md](front.md) | 프론트엔드 라우트·컴포넌트·API 연동 명세 |
 | [docs/backend.md](backend.md) | 백엔드 API·인증·이미지 업로드 명세 |
-| [docs/db.md](db.md) | SQLite 스키마·인덱스·시드 데이터 |
+| [docs/db.md](db.md) | SQLite(로컬) / PostgreSQL(서버) 스키마·인덱스·시드 데이터 |
 
 ## 3. 프로젝트 구조
 
@@ -135,14 +135,17 @@ DB 스키마를 바꿀 때는 `backend/`에서 `alembic revision --autogenerate 
 
 ## 7. 배포
 
-이 저장소에는 CI/CD가 구성되어 있지 않다. `main` 브랜치에 push해도 자동으로 서비스에 반영되지 않으며, 서버에서 아래 절차를 수동으로 수행해야 한다.
+`main` 푸시 시 GitHub Actions가 프론트 빌드·백엔드 기동을 확인하고, Docker 이미지를 `ghcr.io/cg5779-png/oatstone`에 게시한다.
 
-1. 서버에서 `git pull`
-2. `cd frontend && npm install && npm run build` → `frontend/dist`를 Nginx 등 정적 호스팅에 반영
-3. `cd backend`에서 의존성 설치/마이그레이션(`alembic upgrade head`) 후 `uvicorn app.main:app --host 0.0.0.0 --port 8000`을 systemd/supervisor로 구동
-4. 리버스 프록시에서 `/api`, `/uploads` → FastAPI, 그 외 `/` → 정적 파일로 라우팅
+서버:
 
-상세는 `docs/backend.md` §15(실행·배포) 참고.
+```bash
+cp deploy/env.example .env   # 비밀번호·도메인·SMTP 수정
+docker compose pull
+docker compose up -d
+```
+
+이후 배포는 `docker compose pull && docker compose up -d`. 상세는 README 참고.
 
 ## 8. 수동 확인 체크리스트
 

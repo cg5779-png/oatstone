@@ -7,12 +7,12 @@
 
 | 항목 | 내용 |
 |------|------|
-| DBMS | SQLite 3 |
+| DBMS | 로컬 SQLite 3 / 서버 PostgreSQL |
 | ORM | SQLAlchemy 2.0 |
-| 파일 | `backend/oatstone.db` |
-| 저널 | WAL (`PRAGMA journal_mode=WAL`) |
-| FK | `PRAGMA foreign_keys=ON` |
-| 마이그레이션 | Alembic (`001_initial_schema`) |
+| 파일(로컬) | `backend/oatstone.db` |
+| 저널(로컬) | WAL (`PRAGMA journal_mode=WAL`) |
+| FK | SQLite `PRAGMA foreign_keys=ON` / PostgreSQL ON DELETE CASCADE |
+| 마이그레이션 | Alembic (`001_initial_schema`, `APP_ENV`로 방언 선택) |
 
 ## 2. ER 다이어그램
 
@@ -132,6 +132,6 @@ Hero / About / Process 는 프론트 정적 카피이므로 테이블 없음.
 
 ## 6. 백업 & 유지보수
 
-- SQLite 파일 일 1회 이상 백업 권장
-- DBMS는 SQLite 유지 (PostgreSQL 전환 계획 없음)
-- 스키마 변경: `alembic revision` 후 `alembic upgrade head`
+- 로컬: SQLite 파일 일 1회 이상 백업 권장
+- 서버: PostgreSQL `pg_dump` 정기 백업
+- 스키마 변경: `alembic revision` 후 `alembic upgrade head` (현재 `APP_ENV`/`DATABASE_URL` 대상)

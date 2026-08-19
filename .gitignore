@@ -17,6 +17,7 @@ __pycache__/
 *.db
 *.db-shm
 *.db-wal
+*.db-journal
 
 # uploaded files (keep folder)
 backend/uploads/**
@@ -33,3 +34,7 @@ frontend/dist/
 Thumbs.db
 .vscode/
 .idea/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/

@@ -8,6 +8,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    false,
     func,
 )
 from sqlalchemy.orm import relationship
@@ -39,7 +40,7 @@ class Project(Base):
     category = Column(String(50), nullable=False)
     thumbnail_url = Column(String(500), nullable=True)
     tags = Column(JSON, nullable=False, default=list)
-    is_featured = Column(Boolean, nullable=False, server_default="0", default=False)
+    is_featured = Column(Boolean, nullable=False, server_default=false(), default=False)
     sort_order = Column(Integer, nullable=False, server_default="0", default=0)
     created_at = Column(DateTime, nullable=False, server_default=func.now(), default=func.now())
     updated_at = Column(

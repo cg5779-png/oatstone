@@ -5,7 +5,7 @@ Revises:
 Create Date: 2026-08-19
 
 inquiries, projects, project_images + indexes + updated_at triggers.
-기존 create_all() DB에도 안전하게 적용되도록 테이블은 없을 때만 생성한다.
+SQLite(로컬) / PostgreSQL(서버) 모두 적용. 기존 테이블은 건너뛴다.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-UPDATED_AT_TRIGGER = """
+SQLITE_UPDATED_AT_TRIGGER = """
 CREATE TRIGGER IF NOT EXISTS trg_{table}_updated_at
 AFTER UPDATE ON {table}
 FOR EACH ROW
@@ -33,9 +33,62 @@ BEGIN
 END;
 """
 
+POSTGRES_UPDATED_AT_FN = """
+CREATE OR REPLACE FUNCTION oatstone_set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.updated_at IS NOT DISTINCT FROM OLD.updated_at THEN
+        NEW.updated_at = CURRENT_TIMESTAMP;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+"""
+
+POSTGRES_UPDATED_AT_TRIGGER = """
+DROP TRIGGER IF EXISTS trg_{table}_updated_at ON {table};
+CREATE TRIGGER trg_{table}_updated_at
+BEFORE UPDATE ON {table}
+FOR EACH ROW
+EXECUTE PROCEDURE oatstone_set_updated_at();
+"""
+
+
+def _dialect_name() -> str:
+    return op.get_bind().dialect.name
+
+
+def _is_sqlite() -> bool:
+    return _dialect_name() == "sqlite"
+
 
 def _table_names() -> set[str]:
-    return set(inspect(op.get_bind()).get_table_names())
+    try:
+        return set(inspect(op.get_bind()).get_table_names())
+    except Exception:
+        return set()
+
+
+def _create_updated_at_triggers() -> None:
+    if _is_sqlite():
+        op.execute(sa.text(SQLITE_UPDATED_AT_TRIGGER.format(table="inquiries")))
+        op.execute(sa.text(SQLITE_UPDATED_AT_TRIGGER.format(table="projects")))
+        return
+
+    op.execute(sa.text(POSTGRES_UPDATED_AT_FN))
+    op.execute(sa.text(POSTGRES_UPDATED_AT_TRIGGER.format(table="inquiries")))
+    op.execute(sa.text(POSTGRES_UPDATED_AT_TRIGGER.format(table="projects")))
+
+
+def _drop_updated_at_triggers() -> None:
+    if _is_sqlite():
+        op.execute(sa.text("DROP TRIGGER IF EXISTS trg_projects_updated_at"))
+        op.execute(sa.text("DROP TRIGGER IF EXISTS trg_inquiries_updated_at"))
+        return
+
+    op.execute(sa.text("DROP TRIGGER IF EXISTS trg_projects_updated_at ON projects"))
+    op.execute(sa.text("DROP TRIGGER IF EXISTS trg_inquiries_updated_at ON inquiries"))
+    op.execute(sa.text("DROP FUNCTION IF EXISTS oatstone_set_updated_at()"))
 
 
 def upgrade() -> None:
@@ -84,7 +137,7 @@ def upgrade() -> None:
             sa.Column("category", sa.String(length=50), nullable=False),
             sa.Column("thumbnail_url", sa.String(length=500), nullable=True),
             sa.Column("tags", sa.JSON(), nullable=False),
-            sa.Column("is_featured", sa.Boolean(), server_default="0", nullable=False),
+            sa.Column("is_featured", sa.Boolean(), server_default=sa.false(), nullable=False),
             sa.Column("sort_order", sa.Integer(), server_default="0", nullable=False),
             sa.Column(
                 "created_at",
@@ -134,13 +187,11 @@ def upgrade() -> None:
     op.execute(
         sa.text("CREATE INDEX IF NOT EXISTS idx_project_images_project_id ON project_images (project_id)")
     )
-    op.execute(sa.text(UPDATED_AT_TRIGGER.format(table="inquiries")))
-    op.execute(sa.text(UPDATED_AT_TRIGGER.format(table="projects")))
+    _create_updated_at_triggers()
 
 
 def downgrade() -> None:
-    op.execute(sa.text("DROP TRIGGER IF EXISTS trg_projects_updated_at"))
-    op.execute(sa.text("DROP TRIGGER IF EXISTS trg_inquiries_updated_at"))
+    _drop_updated_at_triggers()
     op.execute(sa.text("DROP INDEX IF EXISTS idx_project_images_project_id"))
     op.execute(sa.text("DROP INDEX IF EXISTS idx_projects_slug"))
     op.execute(sa.text("DROP INDEX IF EXISTS idx_projects_featured"))

@@ -8,23 +8,12 @@ from sqlalchemy import engine_from_config, pool
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.config import DATABASE_URL
-from app.database import Base
+from app.config import IS_SQLITE
+from app.database import Base, alembic_config, alembic_sqlalchemy_url
 import app.models  # noqa: F401
 
 config = context.config
-
-
-def _resolve_database_url(url: str) -> str:
-    if not url.startswith("sqlite:///"):
-        return url
-    raw = url.removeprefix("sqlite:///")
-    if raw.startswith("/"):
-        return url
-    return "sqlite:///" + (BACKEND_ROOT / raw).resolve().as_posix()
-
-
-config.set_main_option("sqlalchemy.url", _resolve_database_url(DATABASE_URL).replace("%", "%%"))
+alembic_config(config)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -33,13 +22,14 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
+    url = alembic_sqlalchemy_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        render_as_batch=url.startswith("sqlite") if url else False,
+        render_as_batch=IS_SQLITE,
+        compare_type=True,
     )
 
     with context.begin_transaction():
@@ -47,8 +37,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    url = config.get_main_option("sqlalchemy.url") or DATABASE_URL
-    connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+    connect_args = {"check_same_thread": False} if IS_SQLITE else {}
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
@@ -60,7 +49,8 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            render_as_batch=url.startswith("sqlite"),
+            render_as_batch=IS_SQLITE,
+            compare_type=True,
         )
 
         with context.begin_transaction():

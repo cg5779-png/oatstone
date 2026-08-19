@@ -1,7 +1,7 @@
 # OATSTONE 백엔드 개발 명세서
 
 > **기준:** 실제 구현(`backend/app`) — 공개 API(health/projects/inquiries) + 관리자 API(로그인/포트폴리오 CRUD/이미지 업로드)  
-> **DB:** 개발·프로덕션 모두 **SQLite** 사용
+> **DB:** 로컬 **SQLite**, 서버 **PostgreSQL** (`APP_ENV`로 자동 선택)
 
 ---
 
@@ -24,7 +24,7 @@
 |------|------|
 | 프레임워크 | FastAPI 0.110+ |
 | 언어 | Python 3.11+ |
-| 데이터베이스 | **SQLite 3** (개발·프로덕션 동일) |
+| 데이터베이스 | 로컬 SQLite 3 / 서버 PostgreSQL (`APP_ENV`) |
 | ORM | SQLAlchemy 2.0 |
 | 마이그레이션 | Alembic |
 | 검증 | Pydantic v2 (`field_validator`, 한글 오류 메시지) |
@@ -56,7 +56,6 @@
 | `GET /api/inquiries` (공개/관리자 모두) | 문의 목록 조회 UI 없음 |
 | `GET /api/projects?category=` 등 필터 | 공개 Portfolio는 전체 그리드만 표시 |
 | 관리자 다중 계정 / 권한(role) | 단일 관리자 계정(`ADMIN_USERNAME`)만 지원 |
-| PostgreSQL 등 DB 전환 | SQLite 단일 DB 정책 |
 | Rate limiting, WebSocket | 현재 요구사항 없음 |
 
 ---
@@ -100,7 +99,7 @@ backend/
 
 ---
 
-## 5. 데이터베이스 (SQLite)
+## 5. 데이터베이스
 
 앱 기동 시 `init_db()`가 **Alembic `upgrade head`** 로 스키마를 맞추고, 연결마다 WAL · `foreign_keys=ON`을 적용한다. 테이블 컬럼·인덱스·트리거·시드 데이터의 전체 명세는 **`docs/db.md`** 를 참고한다(중복 방지).
 
@@ -383,7 +382,9 @@ AdminPortfolioList/Editor → adminApi.ts(Authorization 헤더 자동 첨부) �
 
 | 변수 | 기본값(예시) | 설명 |
 |------|--------------|------|
-| `DATABASE_URL` | `sqlite:///./oatstone.db` | SQLite 연결 문자열 |
+| `APP_ENV` | `local` | `local` → SQLite, `production`/`server`/`staging` → PostgreSQL |
+| `DATABASE_URL` | (APP_ENV에 따름) | 지정 시 최우선. `postgres://` 도 허용 |
+| `POSTGRES_HOST` / `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | — | 서버에서 `DATABASE_URL` 없을 때 |
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:3000` | 허용 Origin(쉼표 구분) |
 | `DEBUG` | `true` | 디버그 모드 |
 | `INQUIRY_RECIPIENT` | `oootn@naver.com` | 문의 수신 메일 |
@@ -471,19 +472,18 @@ uvicorn app.main:app --reload --port 8000
 
 | 구성요소 | 방식 |
 |----------|------|
-| Frontend | `npm run build` → `frontend/dist` 정적 호스팅 (Nginx 등) |
-| Backend | `uvicorn app.main:app --host 0.0.0.0 --port 8000` (systemd/supervisor) |
-| Reverse Proxy | `/api`, `/uploads` → FastAPI, `/` → 정적 파일 |
-| DB | SQLite 파일 단일 인스턴스, 백업 스크립트 |
+| Frontend + Backend | Docker 이미지 `ghcr.io/cg5779-png/oatstone` (FastAPI가 `frontend/dist` 제공) |
+| Reverse Proxy | 호스트 `:8000` 또는 Nginx → 컨테이너 8000 |
+| DB | PostgreSQL (`APP_ENV=production`), `pg_dump` 백업 |
 | Secrets | `.env`는 서버에만 배치, 저장소에 커밋 금지. `ADMIN_PASSWORD`/`JWT_SECRET`은 기본값에서 반드시 교체 |
 
-배포 자동화(CI/CD)는 현재 저장소에 구성되어 있지 않다 — push가 곧 배포로 이어지지 않으며, 위 표의 절차를 서버에서 수동으로 수행해야 한다.
+`main` 푸시 시 GitHub Actions가 이미지를 빌드해 GHCR에 올린다. 서버에서는 `docker compose pull && docker compose up -d`.
 
 ---
 
 ## 16. 포트폴리오 시드 데이터
 
-이미지 파일은 정적 자산으로 유지하고, 메타·URL은 SQLite에 둔다.
+이미지 파일은 정적 자산으로 유지하고, 메타·URL은 DB에 둔다.
 
 ```
 scripts/sync-portfolio.mjs
@@ -513,4 +513,4 @@ scripts/sync-portfolio.mjs
 | CORS | ✅ |
 | 문의 목록 조회 API | ⛔ 범위 외 (UI 없음) |
 | 관리자 다중 계정/권한 | ⛔ 범위 외 |
-| 배포 자동화(CI/CD) | ⛔ 미구성 |
+| 배포 자동화(CI/CD) | ✅ GitHub Actions → GHCR |

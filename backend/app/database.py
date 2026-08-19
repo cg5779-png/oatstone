@@ -1,11 +1,20 @@
 from pathlib import Path
+import os
 
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-from app.config import DATABASE_URL
 
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
+from app.config import DATABASE_URL, IS_POSTGRES, IS_SQLITE, mask_database_url
+
+_engine_kwargs: dict = {}
+if IS_SQLITE:
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    _engine_kwargs["pool_pre_ping"] = True
+    _engine_kwargs["pool_size"] = int(os.getenv("DB_POOL_SIZE", "5"))
+    _engine_kwargs["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 TABLES = ("inquiries", "projects", "project_images")
@@ -79,7 +88,7 @@ def _ensure_sqlite_directory(url: str) -> None:
 
 @event.listens_for(engine, "connect")
 def _configure_sqlite_connection(dbapi_connection, _connection_record) -> None:
-    if not DATABASE_URL.startswith("sqlite"):
+    if not IS_SQLITE:
         return
 
     cursor = dbapi_connection.cursor()
@@ -88,23 +97,34 @@ def _configure_sqlite_connection(dbapi_connection, _connection_record) -> None:
     cursor.close()
 
 
-def run_migrations() -> None:
-    """Alembic upgrade head — 스키마 단일 적용 경로."""
-    from alembic import command
+def alembic_sqlalchemy_url() -> str:
+    if IS_SQLITE:
+        db_path = _sqlite_file_path(DATABASE_URL)
+        if db_path is not None:
+            return f"sqlite:///{db_path.as_posix()}"
+    return DATABASE_URL
+
+
+def alembic_config(cfg=None):
     from alembic.config import Config
 
     backend_root = Path(__file__).resolve().parent.parent
-    db_path = _sqlite_file_path(DATABASE_URL)
-    sqlalchemy_url = f"sqlite:///{db_path.as_posix()}" if db_path else DATABASE_URL
-
-    cfg = Config(str(backend_root / "alembic.ini"))
+    if cfg is None:
+        cfg = Config(str(backend_root / "alembic.ini"))
     cfg.set_main_option("script_location", str(backend_root / "migrations"))
-    cfg.set_main_option("sqlalchemy.url", sqlalchemy_url.replace("%", "%%"))
-    command.upgrade(cfg, "head")
+    cfg.set_main_option("sqlalchemy.url", alembic_sqlalchemy_url().replace("%", "%%"))
+    return cfg
+
+
+def run_migrations() -> None:
+    """Alembic upgrade head — 스키마 단일 적용 경로."""
+    from alembic import command
+
+    command.upgrade(alembic_config(), "head")
 
 
 def init_db() -> Path | None:
-    """Alembic 마이그레이션으로 SQLite 스키마를 맞춘다."""
+    """Alembic 마이그레이션으로 스키마를 맞춘다 (로컬 SQLite / 서버 PostgreSQL)."""
     _ensure_sqlite_directory(DATABASE_URL)
 
     import app.models  # noqa: F401
@@ -142,8 +162,10 @@ def verify_db_schema() -> dict:
 
     journal_mode = None
     triggers: list[str] = []
-    if DATABASE_URL.startswith("sqlite"):
-        with engine.connect() as conn:
+    expected_triggers = {"trg_inquiries_updated_at", "trg_projects_updated_at"}
+
+    with engine.connect() as conn:
+        if IS_SQLITE:
             journal_mode = conn.execute(text("PRAGMA journal_mode")).scalar()
             trigger_rows = conn.execute(
                 text(
@@ -153,8 +175,17 @@ def verify_db_schema() -> dict:
                 )
             ).fetchall()
             triggers = [row[0] for row in trigger_rows]
+        elif IS_POSTGRES:
+            trigger_rows = conn.execute(
+                text(
+                    "SELECT trigger_name FROM information_schema.triggers "
+                    "WHERE event_object_table IN ('inquiries', 'projects') "
+                    "ORDER BY trigger_name"
+                )
+            ).fetchall()
+            triggers = [row[0] for row in trigger_rows]
 
-        expected_triggers = {"trg_inquiries_updated_at", "trg_projects_updated_at"}
+    if IS_SQLITE or IS_POSTGRES:
         missing_triggers = expected_triggers - set(triggers)
         if missing_triggers:
             raise RuntimeError(f"누락된 트리거: {', '.join(sorted(missing_triggers))}")
@@ -164,7 +195,8 @@ def verify_db_schema() -> dict:
         raise RuntimeError("project_images.project_id → projects.id FK가 없습니다.")
 
     return {
-        "database_url": DATABASE_URL,
+        "database_url": mask_database_url(DATABASE_URL),
+        "dialect": "sqlite" if IS_SQLITE else "postgresql" if IS_POSTGRES else "other",
         "database_path": str(_sqlite_file_path(DATABASE_URL) or ""),
         "tables": tables,
         "table_columns": table_columns,
