@@ -5,6 +5,21 @@ APP_DIR="/var/www/oatstone.co.kr"
 
 echo "[deploy] start $(date -Is)"
 
+# GitHub Actions SSH는 로그인 셸이 아니라 PATH가 짧다.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${HOME}/.local/bin:${PATH:-}"
+if [ -f /etc/profile ]; then
+  # shellcheck disable=SC1091
+  . /etc/profile
+fi
+if [ -f "${HOME}/.profile" ]; then
+  # shellcheck disable=SC1090
+  . "${HOME}/.profile"
+fi
+if [ -s "${HOME}/.nvm/nvm.sh" ]; then
+  # shellcheck disable=SC1091
+  . "${HOME}/.nvm/nvm.sh"
+fi
+
 if [ ! -d "$APP_DIR/.git" ]; then
   echo "[deploy] ERROR: $APP_DIR 에 git 저장소가 없습니다."
   echo "[deploy] 서버에서 한 번만 실행하세요:"
@@ -21,19 +36,41 @@ echo "[deploy] git pull origin main"
 git fetch origin main
 git pull origin main
 
-if [ -x "$APP_DIR/backend/venv/bin/pip" ]; then
-  PIP="$APP_DIR/backend/venv/bin/pip"
-  PYTHON="$APP_DIR/backend/venv/bin/python"
-elif [ -x "$APP_DIR/venv/bin/pip" ]; then
-  PIP="$APP_DIR/venv/bin/pip"
-  PYTHON="$APP_DIR/venv/bin/python"
-else
-  PIP="pip"
-  PYTHON="python3"
+pick_python() {
+  local candidate
+  for candidate in \
+    "$APP_DIR/backend/venv/bin/python" \
+    "$APP_DIR/backend/.venv/bin/python" \
+    "$APP_DIR/venv/bin/python" \
+    "$APP_DIR/.venv/bin/python"
+  do
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      command -v "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if ! PYTHON="$(pick_python)"; then
+  echo "[deploy] ERROR: python3를 찾을 수 없습니다."
+  echo "[deploy] PATH=$PATH"
+  exit 1
 fi
 
+echo "[deploy] python: $PYTHON ($("$PYTHON" --version 2>&1))"
 echo "[deploy] pip install -r backend/requirements.txt"
-"$PIP" install -r backend/requirements.txt
+if ! "$PYTHON" -m pip --version >/dev/null 2>&1; then
+  echo "[deploy] ERROR: $PYTHON 에 pip 모듈이 없습니다. 서버에 python3-pip를 설치하거나 backend/venv를 만들어 주세요."
+  exit 1
+fi
+"$PYTHON" -m pip install -r backend/requirements.txt
 
 echo "[deploy] alembic upgrade head"
 cd "$APP_DIR/backend"
