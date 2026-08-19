@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-APP_DIR="/var/www/oatstone"
+APP_DIR="/var/www/oatstone.co.kr"
 
 echo "[deploy] start $(date -Is)"
-
 mkdir -p "$APP_DIR"
 cp "$0" "$APP_DIR/deploy.sh"
 chmod +x "$APP_DIR/deploy.sh"
 echo "[deploy] deploy.sh ready at $APP_DIR/deploy.sh"
 
 cd "$APP_DIR"
-
 if [ ! -d .git ]; then
   echo "[deploy] ERROR: $APP_DIR 에 git 저장소가 없습니다."
   echo "[deploy] 서버에서 한 번만 실행하세요:"
-  echo "  git clone https://github.com/cg5779-png/oatstone.git $APP_DIR"
+  echo "  git clone https://github.com/cg5779-png/oatstone.git ."
   exit 1
 fi
 
@@ -51,5 +48,4 @@ fi
 
 echo "[deploy] pm2 restart all"
 pm2 restart all
-
 echo "[deploy] success $(date -Is)"
