@@ -2,6 +2,7 @@
 set -euo pipefail
 
 APP_DIR="/var/www/oatstone.co.kr"
+VENV_DIR="$APP_DIR/backend/venv"
 
 echo "[deploy] start $(date -Is)"
 
@@ -31,10 +32,35 @@ echo "[deploy] git pull origin main"
 git fetch origin main
 git pull origin main
 
+has_pip() {
+  local py="$1"
+  "$py" -m pip --version >/dev/null 2>&1
+}
+
+python_from_pm2() {
+  command -v pm2 >/dev/null 2>&1 || return 1
+  pm2 jlist 2>/dev/null | python3 -c '
+import json, sys
+try:
+    apps = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+if not isinstance(apps, list):
+    sys.exit(1)
+for app in apps:
+    env = app.get("pm2_env") or {}
+    interp = env.get("exec_interpreter") or ""
+    if "python" in interp:
+        print(interp)
+        sys.exit(0)
+sys.exit(1)
+' 2>/dev/null
+}
+
 pick_python() {
   local candidate
   for candidate in \
-    "$APP_DIR/backend/venv/bin/python" \
+    "$VENV_DIR/bin/python" \
     "$APP_DIR/backend/.venv/bin/python" \
     "$APP_DIR/venv/bin/python" \
     "$APP_DIR/.venv/bin/python"
@@ -44,6 +70,12 @@ pick_python() {
       return 0
     fi
   done
+  if candidate="$(python_from_pm2)"; then
+    if [ -x "$candidate" ] || command -v "$candidate" >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  fi
   for candidate in python3 python; do
     if command -v "$candidate" >/dev/null 2>&1; then
       command -v "$candidate"
@@ -53,6 +85,32 @@ pick_python() {
   return 1
 }
 
+install_python_pip_apt() {
+  if ! command -v sudo >/dev/null 2>&1; then
+    return 1
+  fi
+  if ! sudo -n true >/dev/null 2>&1; then
+    echo "[deploy] sudo 암호가 필요해서 python3-pip 자동 설치를 건너뜁니다."
+    return 1
+  fi
+  echo "[deploy] apt-get install python3-pip python3-venv"
+  sudo -n apt-get update -qq
+  sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip python3-venv
+}
+
+ensure_venv() {
+  local base_python="$1"
+  if [ -x "$VENV_DIR/bin/python" ]; then
+    printf '%s\n' "$VENV_DIR/bin/python"
+    return 0
+  fi
+  echo "[deploy] creating $VENV_DIR"
+  if ! "$base_python" -m venv "$VENV_DIR"; then
+    return 1
+  fi
+  printf '%s\n' "$VENV_DIR/bin/python"
+}
+
 if ! PYTHON="$(pick_python)"; then
   echo "[deploy] ERROR: python3를 찾을 수 없습니다."
   echo "[deploy] PATH=$PATH"
@@ -60,17 +118,36 @@ if ! PYTHON="$(pick_python)"; then
 fi
 
 echo "[deploy] python: $PYTHON ($("$PYTHON" --version 2>&1))"
-echo "[deploy] pip install -r backend/requirements.txt"
-if ! "$PYTHON" -m pip --version >/dev/null 2>&1; then
-  echo "[deploy] ERROR: $PYTHON 에 pip 모듈이 없습니다. 서버에 python3-pip를 설치하거나 backend/venv를 만들어 주세요."
-  exit 1
-fi
-"$PYTHON" -m pip install -r backend/requirements.txt
 
-echo "[deploy] alembic upgrade head"
-cd "$APP_DIR/backend"
-"$PYTHON" -m alembic upgrade head
-cd "$APP_DIR"
+if ! has_pip "$PYTHON"; then
+  install_python_pip_apt || true
+fi
+
+if ! has_pip "$PYTHON"; then
+  if NEW_PYTHON="$(ensure_venv "$PYTHON")" && has_pip "$NEW_PYTHON"; then
+    PYTHON="$NEW_PYTHON"
+    echo "[deploy] python: $PYTHON (venv)"
+  fi
+fi
+
+SKIP_BACKEND=0
+if ! has_pip "$PYTHON"; then
+  echo "[deploy] WARN: pip가 없어 백엔드 설치/마이그레이션을 건너뜁니다. 프론트 빌드와 pm2 restart는 진행합니다."
+  SKIP_BACKEND=1
+fi
+
+if [ "$SKIP_BACKEND" -eq 0 ]; then
+  echo "[deploy] pip install -r backend/requirements.txt"
+  if ! "$PYTHON" -m pip install -r backend/requirements.txt; then
+    echo "[deploy] retry pip install --user"
+    "$PYTHON" -m pip install --user -r backend/requirements.txt
+  fi
+
+  echo "[deploy] alembic upgrade head"
+  cd "$APP_DIR/backend"
+  "$PYTHON" -m alembic upgrade head
+  cd "$APP_DIR"
+fi
 
 if [ -f frontend/package.json ]; then
   echo "[deploy] frontend build"
