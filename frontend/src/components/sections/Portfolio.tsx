@@ -1,12 +1,10 @@
-import { lazy, Suspense } from 'react'
 import { useFadeIn } from '../../hooks/useFadeIn'
 import { useProjects } from '../../hooks/useProjects'
 import { CATEGORY_LABELS } from '../../services/api'
 import Button from '../ui/Button'
+import Modal from '../ui/Modal'
 import Toast from '../ui/Toast'
 import './Portfolio.css'
-
-const Modal = lazy(() => import('../ui/Modal'))
 
 export default function Portfolio() {
   const ref = useFadeIn()
@@ -76,39 +74,37 @@ export default function Portfolio() {
       </div>
 
       {selected && (
-        <Suspense fallback={null}>
-          <Modal onClose={closeProject}>
-            <div className="portfolio__modal">
-              <img
-                src={selected.thumbnail_url || ''}
-                alt={selected.title}
-                className="portfolio__modal-img"
-              />
-              <div className="portfolio__modal-body">
-                <span className="portfolio__modal-category">
-                  {CATEGORY_LABELS[selected.category] || selected.category}
-                </span>
-                <h3 className="portfolio__modal-title">{selected.title}</h3>
-                <p className="portfolio__modal-desc">{selected.description}</p>
-                <div className="portfolio__tags">
-                  {selected.tags.map((tag) => (
-                    <span key={tag} className="portfolio__tag">{tag}</span>
+        <Modal onClose={closeProject}>
+          <div className="portfolio__modal">
+            <img
+              src={selected.thumbnail_url || ''}
+              alt={selected.title}
+              className="portfolio__modal-img"
+            />
+            <div className="portfolio__modal-body">
+              <span className="portfolio__modal-category">
+                {CATEGORY_LABELS[selected.category] || selected.category}
+              </span>
+              <h3 className="portfolio__modal-title">{selected.title}</h3>
+              <p className="portfolio__modal-desc">{selected.description}</p>
+              <div className="portfolio__tags">
+                {selected.tags.map((tag) => (
+                  <span key={tag} className="portfolio__tag">{tag}</span>
+                ))}
+              </div>
+              {selected.images.length > 0 && (
+                <div className="portfolio__modal-gallery">
+                  {selected.images.map((img) => (
+                    <figure key={img.id}>
+                      <img src={img.image_url} alt={img.caption || selected.title} />
+                      {img.caption && <figcaption>{img.caption}</figcaption>}
+                    </figure>
                   ))}
                 </div>
-                {selected.images.length > 0 && (
-                  <div className="portfolio__modal-gallery">
-                    {selected.images.map((img) => (
-                      <figure key={img.id}>
-                        <img src={img.image_url} alt={img.caption || selected.title} />
-                        {img.caption && <figcaption>{img.caption}</figcaption>}
-                      </figure>
-                    ))}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
-          </Modal>
-        </Suspense>
+          </div>
+        </Modal>
       )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={clearToast} />}

@@ -87,6 +87,20 @@
   color: rgba(255, 255, 255, 0.9);
 }
 
+@media (hover: none) {
+  .portfolio__overlay {
+    background: linear-gradient(to top, rgba(74, 74, 74, 0.75) 0%, transparent 55%);
+    justify-content: flex-end;
+    align-items: flex-start;
+  }
+
+  .portfolio__category,
+  .portfolio__title {
+    color: rgba(255, 255, 255, 0.95);
+    text-align: left;
+  }
+}
+
 .portfolio__loading {
   padding: 1rem 0;
 }
@@ -187,6 +201,19 @@
   .portfolio__grid,
   .portfolio__skeleton-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .portfolio__modal-img {
+    border-radius: 0;
+    aspect-ratio: 16/11;
+  }
+
+  .portfolio__modal-body {
+    padding: 1.25rem 1.25rem max(2rem, env(safe-area-inset-bottom));
+  }
+
+  .portfolio__modal-gallery {
+    grid-template-columns: 1fr;
   }
 }
 
