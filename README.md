@@ -22,22 +22,19 @@ Windows: `start.bat` 더블클릭
 | http://localhost:5173/admin/login | 관리자 로그인 (포트폴리오 등록/수정) |
 | http://localhost:8000/docs | API 문서 |
 
-## 배포 (GitHub Actions)
+## 배포 (GitHub Actions → EC2 / PM2)
 
-`main`에 푸시하면 CI가 프론트 빌드·백엔드 기동을 확인하고, 통과 시 Docker 이미지를 `ghcr.io/cg5779-png/oatstone` 에 올립니다.
+`main`에 푸시하면 [Deploy](../.github/workflows/deploy.yml) 워크플로가 SSH로 서버에 접속해 `deploy.sh`를 실행합니다. 성공·실패는 GitHub Actions 탭에서 확인할 수 있습니다.
 
-서버에서 최초 한 번:
+필요한 Secrets: `SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_KEY`
+
+서버에 저장소가 아직 없다면 최초 한 번:
 
 ```bash
-git clone https://github.com/cg5779-png/oatstone.git
-cd oatstone
-cp deploy/env.example .env
-# .env 값을 실제 비밀번호·도메인·SMTP로 수정
-docker compose pull
-docker compose up -d
+git clone https://github.com/cg5779-png/oatstone.git /var/www/oatstone
 ```
 
-이후 배포는 `main` 푸시 후 서버에서 `docker compose pull && docker compose up -d` 이면 됩니다. GitHub Packages가 private이면 서버에서 `ghcr.io` 로그인이 필요합니다.
+이후 푸시마다 `deploy.sh`가 서버에 복사되고 (`/var/www/oatstone/deploy.sh`), `git pull` → `pip install` → `alembic upgrade head` → 프론트 빌드 → `pm2 restart all` 순으로 배포됩니다.
 
 ## 명세서
 
