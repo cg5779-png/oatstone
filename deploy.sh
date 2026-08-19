@@ -85,7 +85,7 @@ pick_python() {
   return 1
 }
 
-install_python_pip_apt() {
+install_python_pip() {
   if ! command -v sudo >/dev/null 2>&1; then
     return 1
   fi
@@ -93,9 +93,19 @@ install_python_pip_apt() {
     echo "[deploy] sudo 암호가 필요해서 python3-pip 자동 설치를 건너뜁니다."
     return 1
   fi
-  echo "[deploy] apt-get install python3-pip python3-venv"
-  sudo -n apt-get update -qq
-  sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip python3-venv
+  # Amazon Linux는 dnf. 패키지가 없거나 권한이 없어도 배포가 멈추지 않게 한다.
+  if command -v dnf >/dev/null 2>&1; then
+    echo "[deploy] dnf install python3-pip python3-venv"
+    sudo -n dnf install -y python3-pip python3-venv || sudo -n dnf install -y python3-pip || true
+    return 0
+  fi
+  if command -v apt-get >/dev/null 2>&1; then
+    echo "[deploy] apt-get install python3-pip python3-venv"
+    sudo -n apt-get update -qq || true
+    sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip python3-venv || true
+    return 0
+  fi
+  return 1
 }
 
 ensure_venv() {
@@ -120,7 +130,7 @@ fi
 echo "[deploy] python: $PYTHON ($("$PYTHON" --version 2>&1))"
 
 if ! has_pip "$PYTHON"; then
-  install_python_pip_apt || true
+  install_python_pip || true
 fi
 
 if ! has_pip "$PYTHON"; then
@@ -157,6 +167,10 @@ if [ -f frontend/package.json ]; then
   cd "$APP_DIR"
 fi
 
+if ! command -v pm2 &> /dev/null; then
+  echo "[deploy] pm2 not found, installing..."
+  npm install -g pm2
+fi
 echo "[deploy] pm2 restart all"
 pm2 restart all
 
