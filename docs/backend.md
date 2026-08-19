@@ -1,27 +1,20 @@
 # OATSTONE 백엔드 개발 명세서
 
-> **기준:** 완성된 프론트엔드 UI·타입(`api.ts`, Contact, Portfolio)  
-> **원칙:** 화면에 존재하는 데이터만 DB·API로 다룬다.  
+> **기준:** 실제 구현(`backend/app`) — 공개 API(health/projects/inquiries) + 관리자 API(로그인/포트폴리오 CRUD/이미지 업로드)  
 > **DB:** 개발·프로덕션 모두 **SQLite** 사용
 
 ---
 
 ## 1. 프론트엔드 대비 백엔드 역할
 
-현재 홈페이지는 SPA이며, 섹션별 데이터 출처와 DB 필요 여부는 다음과 같다.
-
-| 섹션 | 프론트 데이터 | DB 테이블 | API |
+| 영역 | 프론트 데이터 | DB 테이블 | API |
 |------|----------------|-----------|-----|
-| Hero | 정적 카피 | — | — |
-| About OATSTONE | 정적 카피 | — | — |
-| Services | `Services.tsx` 상수 4건 | — | — |
-| Process | `Process.tsx` 5단계 | — | — |
-| Portfolio | `Project` / `ProjectDetail` | `projects`, `project_images` | `GET /api/projects`, `GET /api/projects/{id}` |
+| Hero / About / Process | 정적 카피 | — | — |
+| Portfolio (공개) | `Project` / `ProjectDetail` | `projects`, `project_images` | `GET /api/projects`, `GET /api/projects/{id}` |
 | Contact | `InquiryPayload` | `inquiries` | `POST /api/inquiries` |
+| Admin — 포트폴리오 관리 | `AdminProject*` (adminApi.ts) | `projects`, `project_images` | `/api/admin/*` (JWT) |
 
-**DB 범위:** Contact 문의 + Portfolio 프로젝트·이미지.  
-Hero / About / Services / Process는 카피성 콘텐츠라 테이블을 두지 않는다.  
-포트폴리오 이미지 파일은 계속 `public/assets/portfolio/`에 두고, DB에는 URL·메타데이터만 저장한다.
+포트폴리오 이미지는 두 경로로 존재한다: 초기 시드 이미지는 `frontend/public/assets/portfolio/`(정적 자산), 관리자 업로드 이미지는 `backend/uploads/portfolio/{slug}/`(백엔드가 `/uploads`로 서빙). 상세는 `docs/db.md` §3.2 참고.
 
 ---
 
@@ -33,7 +26,9 @@ Hero / About / Services / Process는 카피성 콘텐츠라 테이블을 두지 
 | 언어 | Python 3.11+ |
 | 데이터베이스 | **SQLite 3** (개발·프로덕션 동일) |
 | ORM | SQLAlchemy 2.0 |
+| 마이그레이션 | Alembic |
 | 검증 | Pydantic v2 (`field_validator`, 한글 오류 메시지) |
+| 인증 | PyJWT (HS256) + `HTTPBearer` |
 | 메일 | Python `smtplib` (네이버 SMTP) |
 | API 문서 | Swagger UI `/docs`, ReDoc `/redoc` |
 
@@ -45,25 +40,22 @@ Hero / About / Services / Process는 카피성 콘텐츠라 테이블을 두지 
 
 | 기능 | 설명 |
 |------|------|
-| Health Check | `GET /api/health` (페이지 미사용, 가동 확인) |
-| 포트폴리오 목록 | `GET /api/projects` → `projects` (`sort_order`) |
-| 포트폴리오 상세 | `GET /api/projects/{id}` → `projects` + `project_images` |
+| Health Check | `GET /api/health` |
+| 포트폴리오 목록/상세 (공개) | `GET /api/projects`, `GET /api/projects/{id}` |
 | 문의 접수 | `POST /api/inquiries` → 검증 → SMTP → `inquiries` INSERT |
+| 관리자 로그인 | `POST /api/admin/login` → JWT 발급 |
+| 관리자 포트폴리오 CRUD | `/api/admin/projects*` (생성/수정/삭제/목록/상세) |
+| 관리자 이미지 관리 | 업로드/삭제/대표 이미지 지정 |
 | CORS | 프론트엔드 Origin 허용 |
 | 한글 검증 오류 | Pydantic 422 응답을 한글 `detail`로 변환 |
 
 ### 3.2 제외 (Out of Scope)
 
-프론트 페이지에 **호출부가 없는** 엔드포인트는 두지 않는다.
-
 | 제외 항목 | 사유 |
 |-----------|------|
-| `GET /api/inquiries` | 관리자 UI 없음 |
-| `POST/PUT/DELETE /api/projects` | 포트폴리오는 시드·정적 자산, CMS 없음 |
-| `GET /api/projects?category=` 등 필터 | Portfolio는 전체 그리드만 표시 |
-| `GET /api/project-images` | 이미지는 상세 응답에 포함 |
-| JWT / 관리자 인증 | 디자인에 없음 |
-| 이미지 업로드 API | `scripts/sync-portfolio.mjs` |
+| `GET /api/inquiries` (공개/관리자 모두) | 문의 목록 조회 UI 없음 |
+| `GET /api/projects?category=` 등 필터 | 공개 Portfolio는 전체 그리드만 표시 |
+| 관리자 다중 계정 / 권한(role) | 단일 관리자 계정(`ADMIN_USERNAME`)만 지원 |
 | PostgreSQL 등 DB 전환 | SQLite 단일 DB 정책 |
 | Rate limiting, WebSocket | 현재 요구사항 없음 |
 
@@ -73,200 +65,81 @@ Hero / About / Services / Process는 카피성 콘텐츠라 테이블을 두지 
 
 ```
 backend/
-├── .env.example              # SMTP·DB·CORS 설정 예시
-├── .env                      # 로컬/서버 비밀값 (git 제외)
+├── .env.example               # DB·CORS·SMTP·관리자 인증 설정 예시
+├── .env                       # 로컬/서버 비밀값 (git 제외)
 ├── requirements.txt
 ├── alembic.ini
 ├── migrations/
 │   ├── env.py
 │   └── versions/
 │       └── 001_initial_schema.py
-├── oatstone.db               # SQLite 파일 (마이그레이션으로 생성)
+├── oatstone.db                 # SQLite 파일 (마이그레이션으로 생성)
+├── uploads/                    # 관리자 업로드 이미지 (/uploads로 서빙)
+│   └── portfolio/{slug}/
 └── app/
-    ├── main.py               # FastAPI 앱, CORS, 예외 핸들러, 라우터 등록
-    ├── config.py             # 환경 변수 로드
-    ├── database.py           # Engine, Session, Alembic upgrade, get_db
-    ├── exceptions.py         # 422 한글 변환 핸들러
-    ├── seed.py               # 포트폴리오 시드
+    ├── main.py                 # FastAPI 앱, CORS, 예외 핸들러, 라우터 등록, /uploads 마운트
+    ├── config.py                # 환경 변수 로드
+    ├── database.py              # Engine, Session, Alembic upgrade, get_db, 스키마 검증
+    ├── exceptions.py            # 422 한글 변환 핸들러
+    ├── seed.py                  # 포트폴리오 초기 시드
     ├── models/
-    │   ├── inquiry.py        # inquiries
-    │   └── project.py        # projects, project_images
+    │   ├── inquiry.py           # Inquiry (inquiries)
+    │   └── project.py           # Project, ProjectImage (projects, project_images)
     ├── schemas/
-    │   ├── inquiry.py        # InquiryCreate, InquiryResponse
-    │   └── project.py        # ProjectResponse, ProjectDetailResponse
+    │   ├── inquiry.py           # InquiryCreate, InquiryResponse
+    │   ├── project.py           # ProjectResponse, ProjectDetailResponse (공개)
+    │   └── admin.py             # AdminLogin*, AdminProject*, AdminThumbnailRequest
     ├── services/
-    │   └── email.py          # SMTP 문의 메일 발송
+    │   ├── auth.py               # JWT 발급/검증, 관리자 자격 확인
+    │   ├── email.py              # SMTP 문의 메일 발송
+    │   └── storage.py            # 이미지 업로드 저장/삭제
     └── routers/
-        └── api.py            # health, projects, inquiries
+        ├── api.py                # health, projects, inquiries (공개)
+        └── admin.py              # 로그인 + 포트폴리오/이미지 CRUD (JWT 필요)
 ```
 
 ---
 
 ## 5. 데이터베이스 (SQLite)
 
-앱 기동 시 `init_db()`가 **Alembic `upgrade head`** 로 스키마를 맞추고, 연결마다 WAL · `foreign_keys=ON`을 적용한다.
+앱 기동 시 `init_db()`가 **Alembic `upgrade head`** 로 스키마를 맞추고, 연결마다 WAL · `foreign_keys=ON`을 적용한다. 테이블 컬럼·인덱스·트리거·시드 데이터의 전체 명세는 **`docs/db.md`** 를 참고한다(중복 방지).
 
 ```
 projects 1 ── N project_images
 inquiries          (독립)
 ```
 
-프론트 `Project` / `ProjectDetail` / `InquiryPayload`와 컬럼을 맞춘다.
-
-### 5.1 `inquiries` — Contact 문의
-
-`Contact.tsx` + `useInquiries.ts` + `InquiryPayload`와 1:1.
-
-| 컬럼 | 타입 | 제약 | 프론트 대응 |
-|------|------|------|-------------|
-| id | INTEGER | PK, AUTOINCREMENT | 응답 `id` |
-| name | VARCHAR(100) | NOT NULL | `name` 1~100자 |
-| email | VARCHAR(200) | NOT NULL | `email` |
-| phone | VARCHAR(20) | NOT NULL | `phone` 10~20자 |
-| project_type | VARCHAR(50) | NOT NULL, CHECK | `drawing` \| `3d` \| `integrated` \| `other` |
-| message | TEXT | NOT NULL | `message` 10~2000자 |
-| status | VARCHAR(20) | DEFAULT `pending`, CHECK | UI 미노출 (`pending` \| `read` \| `replied`) |
-| created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | 응답 `created_at` |
-| updated_at | DATETIME | DEFAULT CURRENT_TIMESTAMP, 트리거 | 내부 갱신 |
-
-**CHECK:** `ck_inquiries_project_type`, `ck_inquiries_status`  
-**인덱스:** `idx_inquiries_created_at` (`created_at` DESC), `idx_inquiries_status` (`status`)  
-**트리거:** `trg_inquiries_updated_at`
-
-### 5.2 `projects` — Portfolio 목록
-
-`frontend/src/services/api.ts` 의 `Project` + 매니페스트 `slug`.
-
-| 컬럼 | 타입 | 제약 | 프론트 대응 |
-|------|------|------|-------------|
-| id | INTEGER | PK, AUTOINCREMENT | `Project.id` |
-| slug | VARCHAR(100) | NOT NULL, UNIQUE | 매니페스트 `slug` (예: `a-public`) |
-| title | VARCHAR(200) | NOT NULL | `title` (공공시설 등) |
-| description | TEXT | NOT NULL | `description` |
-| category | VARCHAR(50) | NOT NULL, CHECK | `drawing` \| `3d` \| `integrated` |
-| thumbnail_url | VARCHAR(500) | NULL | `thumbnail_url` (첫 이미지 또는 커버) |
-| tags | JSON | NOT NULL | `tags: string[]` |
-| is_featured | BOOLEAN | DEFAULT 0 | `is_featured` (`id <= 4` 시드) |
-| sort_order | INTEGER | DEFAULT 0 | 그리드 순서 (시드는 `id`와 동일) |
-| created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | `created_at` |
-| updated_at | DATETIME | DEFAULT CURRENT_TIMESTAMP, 트리거 | 내부 갱신 |
-
-**CHECK:** `ck_projects_category` — 문의의 `other`는 포트폴리오 분류에 쓰지 않는다.  
-**인덱스:** `idx_projects_category`, `idx_projects_featured` (`is_featured`, `sort_order`), `idx_projects_slug` UNIQUE  
-**트리거:** `trg_projects_updated_at`
-
-### 5.3 `project_images` — Portfolio 상세 갤러리
-
-`ProjectDetail.images` 와 1:1.
-
-| 컬럼 | 타입 | 제약 | 프론트 대응 |
-|------|------|------|-------------|
-| id | INTEGER | PK, AUTOINCREMENT | `images[].id` |
-| project_id | INTEGER | FK → `projects.id` ON DELETE CASCADE | 부모 프로젝트 |
-| image_url | VARCHAR(500) | NOT NULL | `images[].image_url` (`/assets/portfolio/...`) |
-| caption | VARCHAR(200) | NULL | `images[].caption` |
-| sort_order | INTEGER | DEFAULT 0 | 갤러리 순서 (1부터) |
-| created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | 내부 |
-
-**인덱스:** `idx_project_images_project_id` (`project_id`)
-
-### 5.4 시드 데이터 (프론트 포트폴리오 7건)
-
-`python -m app.seed`가 `frontend/src/data/portfolio-manifest.json` + `portfolioData.ts` 메타를 넣어 이미 데이터가 있으면 건너뛴다.
-
-| id | slug | title | category | featured | 이미지 수 |
-|----|------|-------|----------|----------|-----------|
-| 1 | a-public | 공공시설 | integrated | ✓ | 22 |
-| 2 | b-medical | 의료시설 | integrated | ✓ | 15 |
-| 3 | c-office | 업무시설 | integrated | ✓ | 14 |
-| 4 | d-education | 교육시설 | integrated | ✓ | 23 |
-| 5 | e-commercial | 상업시설 | integrated | — | 11 |
-| 6 | f-exhibition | 전시기획시설 | integrated | — | 37 |
-| 7 | g-exterior | 익스테리어 | 3d | — | 28 |
-
-합계 **150**장. 썸네일은 매니페스트 `images[0]`.
-
-### 5.5 SQLite 환경별 설정
-
-| 환경 | DATABASE_URL 예시 | 비고 |
-|------|-------------------|------|
-| 개발 | `sqlite:///./oatstone.db` | `backend/` 기준 상대 경로 |
-| 프로덕션 | `sqlite:////var/www/oatstone/data/oatstone.db` | 절대 경로 권장, 디렉터리 사전 생성 |
-
-- 개발·프로덕션 **동일 DBMS(SQLite)**. 별도 RDBMS 전환 계획 없음.
-- 프로덕션: `oatstone.db` 파일 **일 1회 이상 백업** 권장 (cron + 파일 복사).
-- 기동 시 `PRAGMA journal_mode=WAL`, `PRAGMA foreign_keys=ON`.
-
-### 5.6 마이그레이션 (Alembic)
-
-스키마 적용은 `create_all()` 대신 Alembic 리비전을 사용한다.
-
-| 리비전 | 내용 |
-|--------|------|
-| `001_initial_schema` | `inquiries`, `projects`, `project_images` + 인덱스 + `updated_at` 트리거 |
-
-기존 `create_all()`로 만든 DB에도 테이블이 있으면 생성은 건너뛰고 인덱스·트리거만 맞춘 뒤 버전을 기록한다.
-
-```bash
-cd backend
-venv\Scripts\alembic upgrade head   # 스키마만 (Windows)
-python -m app.seed                  # 마이그레이션 + 포트폴리오 시드
-```
+기동 흐름: `bootstrap()`(`main.py`) → `init_db()`(Alembic upgrade) → `seed_projects()`(테이블이 비어 있을 때만 `portfolio-manifest.json` 삽입).
 
 ---
 
 ## 6. API 명세
 
-프론트 `frontend/src/services/api.ts` 타입 및 Vite 프록시(`/api` → `localhost:8000`)와 일치한다.
+### 6.1 공개 엔드포인트
 
-공개 엔드포인트는 **4개**다. 페이지가 쓰지 않는 CRUD·필터·관리자 API는 두지 않는다.
-
-| Method | Path | 프론트 호출 | DB |
-|--------|------|-------------|-----|
+| Method | Path | 프론트 호출 | 인증 |
+|--------|------|-------------|------|
 | GET | `/api/health` | 없음 (가동 확인) | — |
-| GET | `/api/projects` | `fetchProjects()` → `Project[]` | `projects` |
-| GET | `/api/projects/{id}` | `fetchProject(id)` → `ProjectDetail` | `projects` + `project_images` |
-| POST | `/api/inquiries` | `submitInquiry()` → `{ message }` | `inquiries` INSERT |
+| GET | `/api/projects` | `fetchProjects()` → `Project[]` | — |
+| GET | `/api/projects/{id}` | `fetchProject(id)` → `ProjectDetail` | — |
+| POST | `/api/inquiries` | `submitInquiry()` → `{ id, message, created_at }` | — |
 
-응답에 **프론트 타입이 없는 컬럼은 넣지 않는다.**
-
-| 테이블 컬럼 | API 노출 |
-|-------------|----------|
-| `projects.slug` | ❌ (매니페스트·시드 전용) |
-| `projects.sort_order` | ❌ (정렬에만 사용) |
-| `projects.updated_at` | ❌ |
-| `project_images.project_id` | ❌ (경로 `{id}`로 충분) |
-| `project_images.sort_order` | ❌ (배열 순서로 반영) |
-| `project_images.created_at` | ❌ |
-| `inquiries.status` | ❌ (내부, 기본 `pending`) |
-| `inquiries.updated_at` | ❌ |
-
-### 6.1 Health Check
+#### Health Check
 
 ```
 GET /api/health
 ```
-
-**Response 200:**
-
 ```json
-{
-  "status": "ok",
-  "service": "OATSTONE API"
-}
+{ "status": "ok", "service": "OATSTONE API" }
 ```
 
-### 6.2 포트폴리오 목록
-
-`Portfolio.tsx` 마운트 시 그리드용. 카테고리 필터·페이지네이션 없음.
+#### 포트폴리오 목록
 
 ```
 GET /api/projects
 ```
 
-**정렬:** `projects.sort_order ASC`, `id ASC`
-
-**Response 200** — `Project[]` (배열 그대로. `{ items, total }` 래핑 없음):
+정렬: `sort_order ASC, id ASC`. 응답은 배열 그대로(`{ items, total }` 래핑 없음), `images`는 포함하지 않는다.
 
 ```json
 [
@@ -283,70 +156,20 @@ GET /api/projects
 ]
 ```
 
-| 응답 필드 | DB |
-|-----------|-----|
-| id | `projects.id` |
-| title | `projects.title` |
-| description | `projects.description` |
-| category | `projects.category` (`drawing` \| `3d` \| `integrated`) |
-| thumbnail_url | `projects.thumbnail_url` |
-| tags | `projects.tags` JSON → `string[]` |
-| is_featured | `projects.is_featured` |
-| created_at | `projects.created_at` |
-
-`images`는 목록에 포함하지 않는다. 그리드는 `thumbnail_url`만 쓴다.
-
-### 6.3 포트폴리오 상세
-
-그리드 클릭 → 모달. `id`는 숫자 PK (`slug` 조회 없음).
+#### 포트폴리오 상세
 
 ```
 GET /api/projects/{id}
 ```
 
-**Response 200** — `ProjectDetail` (목록 필드 + `images`):
+목록 필드 + `images: [{ id, image_url, caption }]` (`sort_order ASC` 정렬). 대상 없으면 `404 {"detail": "프로젝트를 찾을 수 없습니다."}`.
 
-```json
-{
-  "id": 1,
-  "title": "공공시설",
-  "description": "공공기관 및 공공공간을 위한 도면 작성과 3D 디자인 프로젝트입니다.",
-  "category": "integrated",
-  "thumbnail_url": "/assets/portfolio/a-public/001.jpg",
-  "tags": ["공공시설", "평면도", "3D"],
-  "is_featured": true,
-  "created_at": "2026-01-15T10:00:00",
-  "images": [
-    {
-      "id": 1,
-      "image_url": "/assets/portfolio/a-public/001.jpg",
-      "caption": "공공시설 01"
-    }
-  ]
-}
-```
-
-| 응답 필드 | DB |
-|-----------|-----|
-| (목록과 동일) | `projects.*` |
-| images[].id | `project_images.id` |
-| images[].image_url | `project_images.image_url` |
-| images[].caption | `project_images.caption` |
-
-`images` 순서: `project_images.sort_order ASC`.
-
-**Response 404:** `{"detail": "프로젝트를 찾을 수 없습니다."}`
-
-### 6.4 문의 접수 (Contact)
-
-`Contact.tsx` → `useInquiries` → `submitInquiry()`.
+#### 문의 접수
 
 ```
 POST /api/inquiries
 Content-Type: application/json
 ```
-
-**Request Body** — `InquiryPayload` (프론트 타입과 동일, `inquiries` 컬럼 1:1):
 
 ```json
 {
@@ -358,24 +181,15 @@ Content-Type: application/json
 }
 ```
 
-| 필드 | 타입 | 필수 | 검증 | DB |
-|------|------|------|------|-----|
-| name | string | ✓ | 1~100자, trim | `inquiries.name` |
-| email | string | ✓ | 이메일 형식 | `inquiries.email` |
-| phone | string | ✓ | 10~20자 | `inquiries.phone` |
-| project_type | string | ✓ | `drawing`, `3d`, `integrated`, `other` | `inquiries.project_type` |
-| message | string | ✓ | 10~2000자 | `inquiries.message` |
+| 필드 | 필수 | 검증 |
+|------|------|------|
+| name | ✓ | 1~100자, trim |
+| email | ✓ | 이메일 형식 |
+| phone | ✓ | 10~20자 |
+| project_type | ✓ | `drawing` \| `3d` \| `integrated` \| `other` |
+| message | ✓ | 10~2000자 |
 
-클라이언트가 보내지 않는 컬럼: `status` = `pending`, `created_at` / `updated_at` = NOW.
-
-**처리 순서:**
-
-1. Pydantic 유효성 검사 (실패 시 422, 한글 `detail`)
-2. SMTP로 `INQUIRY_RECIPIENT`(기본 `oootn@naver.com`)에 메일 발송
-3. `inquiries` INSERT
-4. 성공 응답 반환
-
-**Response 201:**
+**처리 순서:** Pydantic 검증(422) → SMTP 발송(`INQUIRY_RECIPIENT`, 실패 시 502/503) → `inquiries` INSERT → 응답.
 
 ```json
 {
@@ -385,36 +199,98 @@ Content-Type: application/json
 }
 ```
 
-| 응답 필드 | 출처 |
-|-----------|------|
-| id | `inquiries.id` |
-| message | **안내 문구** (DB `inquiries.message`가 아님) |
-| created_at | `inquiries.created_at` |
+| 코드 | 상황 |
+|------|------|
+| 422 | 입력값 오류 |
+| 502 | SMTP 전송 실패 |
+| 503 | SMTP 미설정(`SMTP_USER`/`SMTP_PASSWORD` 없음) |
 
-프론트는 Toast에 `message`만 사용한다. `id`·`created_at`은 포함해도 무시된다.
+### 6.2 관리자 엔드포인트 (`/api/admin`, 전부 `Authorization: Bearer <JWT>` 필요 — `/login` 제외)
 
-**Response 오류:**
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/login` | 아이디/비밀번호 → JWT 발급 |
+| GET | `/me` | 토큰 유효성 확인 → `{ username }` |
+| GET | `/projects` | 관리자용 프로젝트 목록(이미지 개수 포함) |
+| GET | `/projects/{id}` | 프로젝트 상세(이미지 배열 포함) |
+| POST | `/projects` | 프로젝트 생성 |
+| PUT | `/projects/{id}` | 프로젝트 부분 수정 |
+| DELETE | `/projects/{id}` | 프로젝트 삭제(첨부 이미지·업로드 폴더 함께 삭제) |
+| POST | `/projects/{id}/images` | 이미지 다중 업로드(multipart, `files`) |
+| DELETE | `/projects/{id}/images/{imageId}` | 이미지 삭제(대표였다면 다음 이미지로 자동 승계) |
+| PUT | `/projects/{id}/thumbnail` | 대표 이미지 지정(`{ image_id }`) |
 
-| 코드 | 상황 | detail 예시 |
-|------|------|-------------|
-| 422 | 입력값 오류 | `메시지는 10자 이상 입력해 주세요.` |
-| 502 | SMTP 전송 실패 | `이메일 전송에 실패했습니다. 잠시 후 다시 시도해 주세요.` |
-| 503 | SMTP 미설정 | `SMTP 설정이 필요합니다. backend/.env 파일에...` |
+#### 로그인
 
-**메일 내용:**
+```
+POST /api/admin/login
+{ "username": "...", "password": "..." }
+```
 
-- **To:** `INQUIRY_RECIPIENT`
-- **Reply-To:** 문의자 `email`
-- **Subject:** `[OATSTONE 문의] {name} · {project_type 한글 라벨}`
-- **Body:** 이름, 이메일, 연락처, 프로젝트 유형, 메시지
+성공: `{ "access_token": "<jwt>", "token_type": "bearer" }`. 실패: `401 {"detail": "아이디 또는 비밀번호가 올바르지 않습니다."}`. `services/auth.py`가 `hmac.compare_digest`로 상수 시간 비교한다.
+
+#### 프로젝트 생성/수정
+
+```
+POST /api/admin/projects
+{
+  "title": "string",
+  "description": "string",
+  "category": "drawing" | "3d" | "integrated",
+  "tags": ["string"],
+  "is_featured": false,
+  "sort_order": null,
+  "slug": null
+}
+```
+
+- `slug`를 비우면 제목을 슬러그화(`_slugify_title`)해 자동 채번, 중복 시 `-2`, `-3`… 접미사 부여
+- `slug`를 직접 지정하면 `^[a-z0-9]+(?:-[a-z0-9]+)*$` 형식 검사 + 중복 시 `409`
+- `sort_order`를 비우면 현재 최댓값 + 1
+- `PUT /projects/{id}`는 `AdminProjectUpdate`(전 필드 optional, `exclude_unset`)로 부분 수정. `slug`는 수정 불가
+
+#### 이미지 업로드
+
+```
+POST /api/admin/projects/{id}/images
+Content-Type: multipart/form-data
+files: File[]
+```
+
+- 허용 확장자: `jpg`, `jpeg`(내부적으로 `jpg`로 정규화), `png`, `webp`, `gif`. 최대 10MB/파일
+- 저장 경로: `backend/uploads/portfolio/{slug}/{sort_order:03d}{ext}`, 중복 파일명은 `-1`, `-2`… 접미사
+- 새 이미지는 해당 프로젝트의 기존 최대 `sort_order` 다음 번호부터 순서대로 삽입(빈 번호를 채우지 않음)
+- 대표 이미지(`thumbnail_url`)가 없던 프로젝트는 첫 업로드 이미지가 자동으로 대표가 됨
+
+#### 이미지 삭제 / 대표 지정
+
+- 이미지 삭제 시 파일도 함께 제거(`delete_managed_file`). 삭제한 이미지가 대표였다면 남은 이미지 중 `sort_order` 최솟값으로 대표를 재지정(`_sync_thumbnail`)
+- 프로젝트 삭제 시 모든 이미지 파일 삭제 + `uploads/portfolio/{slug}/` 폴더 전체 삭제(`delete_project_uploads`)
 
 ---
 
-## 7. Pydantic 스키마
+## 7. 인증 (`app/services/auth.py`)
 
-### 7.1 문의 — `backend/app/schemas/inquiry.py`
+- 로그인 성공 시 `create_access_token()`이 `{ sub: username, exp }` 페이로드를 `JWT_SECRET`으로 HS256 서명, 만료는 `JWT_EXPIRE_HOURS`(기본 12시간)
+- 보호된 라우트는 `Depends(get_current_admin)`으로 `HTTPBearer` 토큰을 검증하고, `sub`가 `ADMIN_USERNAME`과 일치하는지 재확인
+- 토큰이 없거나 스킴이 `Bearer`가 아니거나 검증 실패 시 `401 {"detail": "로그인이 필요합니다."}`
+- 프론트(`adminApi.ts`)는 401 응답을 받으면 저장된 토큰을 지우고 로그인 페이지로 되돌린다
 
-프론트 `InquiryPayload`와 필드·enum 일치.
+**보안 주의:** `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `JWT_SECRET`은 저장소의 `.env.example`과 `config.py` 기본값에 예시 값이 들어 있다. **운영 배포 전 반드시 강력한 값으로 교체**하고, 실제 `.env`는 절대 커밋하지 않는다.
+
+---
+
+## 8. 이미지 스토리지 (`app/services/storage.py`)
+
+- 업로드 루트: `UPLOAD_DIR`(기본 `backend/uploads`), `main.py`가 `/uploads`로 정적 서빙
+- `_safe_upload_path()`가 삭제 요청 경로를 `UPLOAD_DIR` 하위로만 강제해 경로 탈출을 방지
+- 빈 파일(0바이트) 업로드는 거부, 10MB 초과 시 즉시 중단하고 부분 저장된 파일 삭제
+
+---
+
+## 9. Pydantic 스키마
+
+### 9.1 문의 — `schemas/inquiry.py`
 
 ```python
 class InquiryCreate(BaseModel):
@@ -424,32 +300,19 @@ class InquiryCreate(BaseModel):
     project_type: Literal["drawing", "3d", "integrated", "other"]
     message: str
 
-
 class InquiryResponse(BaseModel):
     id: int
     message: str          # 안내 문구. DB inquiries.message 가 아님
     created_at: datetime
 ```
 
-프로젝트 유형 한글 라벨 (`CATEGORY_LABELS`):
-
-| 값 | 라벨 | 사용처 |
-|----|------|--------|
-| drawing | 도면 작성 | Contact select, Portfolio category |
-| 3d | 3D 디자인 | Contact, Portfolio |
-| integrated | 통합 패키지 | Contact, Portfolio |
-| other | 기타 | **Contact만** (`inquiries.project_type`). `projects.category` CHECK에 없음 |
-
-### 7.2 포트폴리오 — `backend/app/schemas/project.py`
-
-프론트 `Project` / `ProjectDetail` 과 동일.
+### 9.2 포트폴리오(공개) — `schemas/project.py`
 
 ```python
 class ProjectImageResponse(BaseModel):
     id: int
     image_url: str
     caption: str | None = None
-
 
 class ProjectResponse(BaseModel):
     id: int
@@ -461,82 +324,88 @@ class ProjectResponse(BaseModel):
     is_featured: bool
     created_at: datetime
 
-
 class ProjectDetailResponse(ProjectResponse):
     images: list[ProjectImageResponse] = []
 ```
 
+### 9.3 관리자 — `schemas/admin.py`
+
+- `AdminLoginRequest` / `AdminLoginResponse` / `AdminMeResponse`
+- `AdminProjectListItem` — 공개 `ProjectResponse` + `slug`, `sort_order`, `image_count`, `updated_at`
+- `AdminProjectDetailResponse(AdminProjectListItem)` — `images: list[AdminProjectImageResponse]` (`sort_order` 포함)
+- `AdminProjectCreate` / `AdminProjectUpdate` — 제목 200자, 설명 5000자, 태그 최대 20개(각 50자) 제한 검증
+- `AdminThumbnailRequest { image_id: int }`
+
+프로젝트 유형/카테고리 한글 라벨(`CATEGORY_LABELS`, `PROJECT_TYPE_LABELS`):
+
+| 값 | 라벨 | 사용처 |
+|----|------|--------|
+| drawing | 도면 작성 | Contact, Portfolio, Admin |
+| 3d | 3D 디자인 | Contact, Portfolio, Admin |
+| integrated | 통합 패키지 | Contact, Portfolio, Admin |
+| other | 기타 | **Contact만.** `projects.category` CHECK에는 없음 |
+
 ---
 
-## 8. 프론트엔드 연동
+## 10. 프론트엔드 연동
 
-### 8.1 Contact 흐름
-
-```
-Contact.tsx
-  → useInquiries (클라이언트 한글 검증)
-  → submitInquiry() in api.ts
-  → POST /api/inquiries (Vite proxy)
-  → FastAPI
-  → Toast (성공/실패)
-```
-
-- 네트워크 오류는 한글 안내로 throw. Mock fallback 없음.
-
-### 8.2 Portfolio 흐름
+### 10.1 Contact 흐름
 
 ```
-Portfolio.tsx
-  → fetchProjects() / fetchProject(id)
-  → GET /api/projects , GET /api/projects/{id}
+Contact.tsx → useInquiries(클라이언트 검증) → submitInquiry() → POST /api/inquiries → Toast
 ```
 
-함수 시그니처는 API 응답과 같다 (`Project[]`, `ProjectDetail`).  
-`frontend/src/services/api.ts`가 Vite 프록시(`/api` → FastAPI)로 위 엔드포인트를 호출한다.  
-목록 실패 시 재시도, 상세 실패 시 Toast로 안내한다.
+### 10.2 Portfolio 흐름 (공개)
 
-### 8.3 개발 실행
-
-루트에서:
-
-```bash
-npm run dev
 ```
+Portfolio.tsx → useProjects → GET /api/projects , GET /api/projects/{id}
+```
+
+### 10.3 Admin 흐름
+
+```
+AdminLogin → POST /api/admin/login → JWT를 localStorage에 저장(useAuth)
+AdminPortfolioList/Editor → adminApi.ts(Authorization 헤더 자동 첨부) → /api/admin/*
+401 응답 → 자동 로그아웃 → /admin/login
+```
+
+### 10.4 개발 실행
+
+루트에서 `npm run dev` (내부적으로 `npm run setup` 선행 후 backend/frontend 동시 실행):
 
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:8000`
-- Vite `server.proxy['/api']` → backend
+- Vite `server.proxy`가 `/api`, `/uploads`를 backend로 프록시
 
 ---
 
-## 9. 환경 변수
+## 11. 환경 변수 (`backend/.env`, `.env.example` 참고)
 
-`backend/.env` (`.env.example` 참고):
-
-| 변수 | 기본값 | 설명 |
-|------|--------|------|
+| 변수 | 기본값(예시) | 설명 |
+|------|--------------|------|
 | `DATABASE_URL` | `sqlite:///./oatstone.db` | SQLite 연결 문자열 |
-| `CORS_ORIGINS` | `http://localhost:5173,...` | 허용 Origin (쉼표 구분) |
+| `CORS_ORIGINS` | `http://localhost:5173,http://localhost:3000` | 허용 Origin(쉼표 구분) |
 | `DEBUG` | `true` | 디버그 모드 |
 | `INQUIRY_RECIPIENT` | `oootn@naver.com` | 문의 수신 메일 |
-| `SMTP_HOST` | `smtp.naver.com` | SMTP 서버 |
-| `SMTP_PORT` | `465` | SMTP 포트 |
-| `SMTP_USE_SSL` | `true` | SSL 사용 여부 |
-| `SMTP_USER` | — | 발송 계정 (필수) |
-| `SMTP_PASSWORD` | — | 앱 비밀번호 (필수) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USE_SSL` | `smtp.naver.com` / `465` / `true` | SMTP 서버 설정 |
+| `SMTP_USER` / `SMTP_PASSWORD` | — (필수) | 발송 계정 / 앱 비밀번호 |
 | `SMTP_FROM` | `SMTP_USER` | From 헤더 |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | — (필수, 운영 시 교체) | 관리자 로그인 자격 증명 |
+| `JWT_SECRET` | — (필수, 운영 시 교체) | JWT 서명 키 |
+| `JWT_EXPIRE_HOURS` | `12` | 토큰 만료 시간 |
+| `UPLOAD_DIR` | `backend/uploads` | 관리자 업로드 이미지 저장 경로 |
 
 프로덕션 추가 예시:
 
 ```env
 DATABASE_URL=sqlite:////var/www/oatstone/data/oatstone.db
-CORS_ORIGINS=https://your-domain.com
+CORS_ORIGINS=https://oatstone.co.kr
 DEBUG=false
 ```
 
 ---
 
-## 10. CORS
+## 12. CORS
 
 ```python
 allow_origins = CORS_ORIGINS  # 환경 변수
@@ -549,25 +418,23 @@ allow_headers = ["*"]
 
 ---
 
-## 11. 에러 처리
+## 13. 에러 처리
 
 | HTTP | 상황 |
 |------|------|
-| 404 | `GET /api/projects/{id}` 대상 없음 |
+| 401 | 관리자 인증 실패/토큰 없음·만료 |
+| 404 | 프로젝트/이미지 대상 없음 |
+| 409 | 슬러그 중복 |
 | 422 | 요청 본문 검증 실패 → `{"detail": "한글 메시지"}` |
 | 502 | 메일 발송 실패 |
 | 503 | SMTP 미구성 |
 | 500 | 예기치 않은 서버 오류 |
 
-`app/exceptions.py`의 `validation_exception_handler`가 Pydantic 영문 메시지를 한글로 변환한다.
-
-프론트 `parseApiError()`가 `detail`(문자열·배열)을 한글로 추가 변환한다.
+`app/exceptions.py`의 `validation_exception_handler`가 Pydantic 영문 메시지를 한글로 변환한다. 프론트 `parseApiError()`(공개)/`utils/validationMessages.ts`(관리자)가 `detail`을 추가로 한글 변환한다.
 
 ---
 
-## 12. 의존성
-
-`backend/requirements.txt`:
+## 14. 의존성 (`backend/requirements.txt`)
 
 ```
 fastapi>=0.110.0
@@ -577,81 +444,72 @@ alembic>=1.13.0
 pydantic[email]>=2.0.0
 python-multipart>=0.0.9
 python-dotenv>=1.0.0
+PyJWT>=2.8.0
 ```
 
 ---
 
-## 13. 실행·배포
+## 15. 실행·배포
 
-### 13.1 로컬
+### 15.1 로컬 (백엔드만)
 
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate          # Windows
+venv\Scripts\activate          # Windows / source venv/bin/activate (macOS·Linux)
 pip install -r requirements.txt
-copy .env.example .env         # SMTP 값 입력
+copy .env.example .env         # SMTP·관리자 값 입력 (Windows), macOS/Linux는 cp
 alembic upgrade head
 python -m app.seed
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 13.2 프로덕션 (개요)
+> 루트에서 `npm run dev`를 실행하면 위 과정(가상환경 생성·설치·시드 포함)이 `scripts/setup.mjs` + `scripts/run-backend.mjs`로 자동 처리된다. 상세는 `docs/guide.md` 참고.
+
+### 15.2 프로덕션 (개요)
 
 | 구성요소 | 방식 |
 |----------|------|
 | Frontend | `npm run build` → `frontend/dist` 정적 호스팅 (Nginx 등) |
 | Backend | `uvicorn app.main:app --host 0.0.0.0 --port 8000` (systemd/supervisor) |
-| Reverse Proxy | `/api` → FastAPI, `/` → 정적 파일 |
+| Reverse Proxy | `/api`, `/uploads` → FastAPI, `/` → 정적 파일 |
 | DB | SQLite 파일 단일 인스턴스, 백업 스크립트 |
-| Secrets | `.env`는 서버에만 배치, 저장소에 커밋 금지 |
+| Secrets | `.env`는 서버에만 배치, 저장소에 커밋 금지. `ADMIN_PASSWORD`/`JWT_SECRET`은 기본값에서 반드시 교체 |
+
+배포 자동화(CI/CD)는 현재 저장소에 구성되어 있지 않다 — push가 곧 배포로 이어지지 않으며, 위 표의 절차를 서버에서 수동으로 수행해야 한다.
 
 ---
 
-## 14. 포트폴리오 데이터
+## 16. 포트폴리오 시드 데이터
 
-이미지 파일은 프론트 정적 자산으로 유지하고, **메타·URL은 SQLite**에 둔다.
+이미지 파일은 정적 자산으로 유지하고, 메타·URL은 SQLite에 둔다.
 
 ```
-D:/.../project/프로젝트A~G-*
-  → scripts/sync-portfolio.mjs
+scripts/sync-portfolio.mjs
   → frontend/public/assets/portfolio/{slug}/
-  → frontend/public/assets/portfolio-covers/   (메인 커버)
+  → frontend/public/assets/portfolio-covers/
   → frontend/src/data/portfolio-manifest.json
-  → python -m app.seed
+  → python -m app.seed (테이블이 비어 있을 때만 삽입)
   → projects / project_images
 ```
 
-현재 UI는 `GET /api/projects*` 로 DB 메타를 읽고, 이미지 파일은 `public/assets/portfolio/` 경로를 그대로 사용한다.
-
-프로젝트 7건 (A~G): 공공·의료·업무·교육·상업·전시기획·익스테리어.
+시드 7건(A~G: 공공·의료·업무·교육·상업·전시기획·익스테리어) 상세는 `docs/db.md` §5 참고. 시드 이후 등록되는 프로젝트는 전부 관리자 화면을 통해 추가된다.
 
 ---
 
-## 15. 구현 체크리스트
+## 17. 구현 체크리스트
 
 | 항목 | 상태 |
 |------|------|
 | `GET /api/health` | ✅ |
-| `GET /api/projects` | ✅ |
-| `GET /api/projects/{id}` | ✅ |
-| `POST /api/inquiries` (검증 + DB 저장) | ✅ |
-| SMTP 메일 발송 | ✅ (`.env` 설정 필요) |
-| `inquiries` SQLite 테이블 | ✅ |
-| `projects` / `project_images` 테이블 | ✅ |
-| 포트폴리오 시드 7건·150장 | ✅ |
+| `GET /api/projects`, `GET /api/projects/{id}` | ✅ |
+| `POST /api/inquiries` (검증 + SMTP + DB 저장) | ✅ |
+| 관리자 로그인/JWT 인증 | ✅ |
+| 관리자 포트폴리오 CRUD | ✅ |
+| 관리자 이미지 업로드/삭제/대표 지정 | ✅ |
 | Alembic `001_initial_schema` | ✅ |
-| 422 한글 오류 | ✅ |
+| 422 한글 오류 변환 | ✅ |
 | CORS | ✅ |
-| 프론트 Portfolio fetch → API 전환 | ✅ |
-| 관리자 API/인증 | ⛔ 범위 외 |
-
----
-
-## 16. 향후 확장 (본 명세 범위 밖)
-
-아래는 **현재 디자인·프론트에 없으므로** 별도 요구 시에만 검토한다.
-
-- 관리자 페이지 + 문의 목록 조회
-- 포트폴리오 CMS / 이미지 업로드 API
-- 문의 Rate limiting
+| 문의 목록 조회 API | ⛔ 범위 외 (UI 없음) |
+| 관리자 다중 계정/권한 | ⛔ 범위 외 |
+| 배포 자동화(CI/CD) | ⛔ 미구성 |

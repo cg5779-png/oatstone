@@ -48,7 +48,7 @@
 └─────────────────┘
 ```
 
-Hero / About / Services / Process 는 프론트 정적 카피이므로 테이블 없음.
+Hero / About / Process 는 프론트 정적 카피이므로 테이블 없음.
 
 ## 3. 테이블 상세
 
@@ -79,12 +79,14 @@ Hero / About / Services / Process 는 프론트 정적 카피이므로 테이블
 |------|------|------|------|
 | id | INTEGER | PK, AUTOINCREMENT | `images[].id` |
 | project_id | INTEGER | FK → projects.id ON DELETE CASCADE | 프로젝트 |
-| image_url | VARCHAR(500) | NOT NULL | `/assets/portfolio/...` |
+| image_url | VARCHAR(500) | NOT NULL | 시드: `/assets/portfolio/...`, 관리자 업로드: `/uploads/portfolio/{slug}/...` |
 | caption | VARCHAR(200) | NULL | 캡션 |
 | sort_order | INTEGER | DEFAULT 0 | 갤러리 순서 |
 | created_at | DATETIME | DEFAULT NOW | 생성일 |
 
 **인덱스:** `idx_project_images_project_id` ON (project_id)
+
+이미지 출처는 두 가지다: ① `python -m app.seed` 초기 시드는 `frontend/public/assets/portfolio/`의 정적 파일을 가리키고, ② 관리자 화면(`/admin/portfolio`)에서 업로드한 이미지는 `backend/uploads/portfolio/{slug}/`에 저장되어 `/uploads/...` 경로로 서빙된다(`app/services/storage.py`). 프로젝트 삭제 시 `/uploads` 하위 파일은 함께 삭제되지만, 시드 이미지(`/assets/...`)는 삭제되지 않는다.
 
 ### 3.3 inquiries (의뢰 문의)
 
