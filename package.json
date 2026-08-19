@@ -1,0 +1,19 @@
+{
+  "name": "oatstone",
+  "private": true,
+  "version": "1.0.0",
+  "description": "OATSTONE Corporate Website",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "predev": "node scripts/setup.mjs",
+    "dev:backend": "node scripts/run-backend.mjs",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "open:browser": "wait-on http-get://localhost:8000/api/health http://localhost:5173 -t 90000 && node scripts/open-browser.mjs",
+    "dev": "concurrently -n backend,frontend,browser -c blue,green,magenta \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run open:browser\"",
+    "start": "npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "wait-on": "^8.0.1"
+  }
+}

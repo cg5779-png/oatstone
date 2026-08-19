@@ -1,0 +1,129 @@
+.hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 2rem 24px;
+  overflow: hidden;
+}
+
+.hero__decor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hero__pebble {
+  position: absolute;
+  background: var(--color-gray-light);
+  border-radius: 50% 45% 55% 50%;
+  opacity: 0.5;
+}
+
+.hero__pebble--large {
+  width: 280px;
+  height: 340px;
+  top: 10%;
+  right: -60px;
+  transform: rotate(-15deg);
+}
+
+.hero__pebble--small {
+  width: 160px;
+  height: 140px;
+  bottom: 20%;
+  left: -40px;
+  transform: rotate(20deg);
+}
+
+.hero__content {
+  text-align: center;
+  z-index: 1;
+  max-width: 640px;
+}
+
+.hero__logo {
+  height: 120px;
+  width: auto;
+  margin: 0 auto 1rem;
+}
+
+.hero__tagline {
+  font-size: 0.9375rem;
+  font-weight: 300;
+  color: var(--color-gray-text);
+  letter-spacing: 0.08em;
+  margin-bottom: 2rem;
+}
+
+.hero__title {
+  font-size: clamp(1.75rem, 5vw, 2.75rem);
+  font-weight: 600;
+  color: var(--color-gray-dark);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  margin-bottom: 1.5rem;
+}
+
+.hero__desc {
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--color-gray);
+  line-height: 1.8;
+  margin-bottom: 2.5rem;
+}
+
+.hero__cta {
+  padding: 0.875rem 2.5rem;
+  background: var(--color-gray-dark);
+  color: var(--color-white);
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: 28px;
+  transition: background var(--transition), transform var(--transition), box-shadow var(--transition);
+}
+
+.hero__cta:hover {
+  background: var(--color-gray);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(74, 74, 74, 0.2);
+}
+
+.hero__scroll-hint {
+  position: absolute;
+  bottom: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-gray-text);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.hero__scroll-line {
+  width: 1px;
+  height: 40px;
+  background: linear-gradient(to bottom, var(--color-gray-text), transparent);
+  animation: scrollPulse 2s ease-in-out infinite;
+}
+
+@keyframes scrollPulse {
+  0%, 100% { opacity: 0.3; transform: scaleY(0.8); }
+  50% { opacity: 1; transform: scaleY(1); }
+}
+
+@media (max-width: 768px) {
+  .hero__logo {
+    height: 90px;
+  }
+
+  .hero__pebble--large {
+    width: 180px;
+    height: 220px;
+    right: -80px;
+  }
+}

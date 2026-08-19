@@ -1,0 +1,118 @@
+.contact {
+  padding: 6rem 0;
+  background: var(--color-white);
+}
+
+.contact__grid {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 4rem;
+  align-items: start;
+}
+
+.contact__info-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-gray-dark);
+  line-height: 1.4;
+  margin-bottom: 1rem;
+}
+
+.contact__info-desc {
+  font-size: 0.9375rem;
+  color: var(--color-gray);
+  line-height: 1.7;
+  margin-bottom: 2rem;
+}
+
+.contact__details p {
+  font-size: 0.875rem;
+  color: var(--color-gray);
+  margin-bottom: 0.5rem;
+}
+
+.contact__details strong {
+  display: inline-block;
+  width: 60px;
+  color: var(--color-gray-dark);
+  font-weight: 500;
+}
+
+.contact__link {
+  color: var(--color-gray-dark);
+  text-decoration: none;
+  transition: color var(--transition);
+}
+
+.contact__link:hover {
+  color: var(--color-gray);
+  text-decoration: underline;
+}
+
+.contact__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.contact__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.contact__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.contact__field label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-gray-dark);
+}
+
+.contact__field input,
+.contact__field select,
+.contact__field textarea {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  color: var(--color-gray-dark);
+  background: var(--color-white);
+  transition: border-color var(--transition);
+}
+
+.contact__field input:focus,
+.contact__field select:focus,
+.contact__field textarea:focus {
+  outline: none;
+  border-color: var(--color-gray);
+}
+
+.contact__field textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.contact__submit {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .contact {
+    padding: 4rem 0;
+  }
+
+  .contact__grid {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+
+  .contact__row {
+    grid-template-columns: 1fr;
+  }
+}
