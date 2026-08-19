@@ -42,7 +42,7 @@ oatstone/
 │       │   ├── layout/       # Header, Footer, MobileMenu
 │       │   ├── sections/     # Hero, About, Process, Portfolio, Contact
 │       │   └── ui/           # Button, Card, Modal, Toast, LineIcon
-│       ├── pages/             # HomePage, admin/(Login, Layout, PortfolioList, PortfolioEditor)
+│       ├── pages/             # HomePage, admin/(AdminLogin, AdminLayout, AdminPortfolioList, AdminPortfolioEditor)
 │       ├── hooks/             # useAuth, useFadeIn, useInquiries, useProjects, useScrollSpy
 │       ├── services/          # api.ts(공개), adminApi.ts(관리자, JWT)
 │       └── data/              # portfolio-manifest.json 등 시드 메타

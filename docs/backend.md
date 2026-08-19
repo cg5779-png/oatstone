@@ -336,7 +336,7 @@ class ProjectDetailResponse(ProjectResponse):
 - `AdminProjectCreate` / `AdminProjectUpdate` — 제목 200자, 설명 5000자, 태그 최대 20개(각 50자) 제한 검증
 - `AdminThumbnailRequest { image_id: int }`
 
-프로젝트 유형/카테고리 한글 라벨(`CATEGORY_LABELS`, `PROJECT_TYPE_LABELS`):
+프로젝트 유형/카테고리 한글 라벨(백엔드 `PROJECT_TYPE_LABELS` — `schemas/inquiry.py`, 프론트 `CATEGORY_LABELS` — `frontend/src/services/api.ts`. 둘 다 동일한 값을 라벨링):
 
 | 값 | 라벨 | 사용처 |
 |----|------|--------|
