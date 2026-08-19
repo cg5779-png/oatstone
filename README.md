@@ -31,10 +31,10 @@ Windows: `start.bat` 더블클릭
 서버에 저장소가 아직 없다면 최초 한 번:
 
 ```bash
-git clone https://github.com/cg5779-png/oatstone.git /var/www/oatstone
+git clone https://github.com/cg5779-png/oatstone.git /var/www/oatstone.co.kr
 ```
 
-이후 푸시마다 `deploy.sh`가 서버에 복사되고 (`/var/www/oatstone/deploy.sh`), `git pull` → `pip install` → `alembic upgrade head` → 프론트 빌드 → `pm2 restart all` 순으로 배포됩니다.
+이후 푸시마다 `/tmp/deploy.sh`로 배포가 실행되고, `git pull` → `pip install` → `alembic upgrade head` → 프론트 빌드 → `pm2 restart all` 순으로 반영됩니다.
 
 ## 명세서
 
