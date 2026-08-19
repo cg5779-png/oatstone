@@ -8,12 +8,22 @@ echo "[deploy] start $(date -Is)"
 
 # GitHub Actions SSH는 로그인 셸이 아니라 PATH가 짧다.
 # /etc/profile 은 읽지 않는다. set -u 와 debuginfod.sh 의 DEBUGINFOD_URLS 가 충돌한다.
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${HOME}/.local/bin:${PATH:-}"
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${HOME}/.npm-global/bin:${HOME}/.local/bin:${PATH:-}"
 if [ -s "${HOME}/.nvm/nvm.sh" ]; then
   set +u
   # shellcheck disable=SC1091
   . "${HOME}/.nvm/nvm.sh"
+  nvm use default >/dev/null 2>&1 || nvm use node >/dev/null 2>&1 || true
   set -u
+fi
+if [ -d "${HOME}/.nvm/versions/node" ]; then
+  for _nvm_bin in "${HOME}/.nvm/versions/node/"*/bin; do
+    if [ -d "$_nvm_bin" ]; then
+      PATH="${_nvm_bin}:${PATH}"
+    fi
+  done
+  unset _nvm_bin
+  export PATH
 fi
 
 if [ ! -d "$APP_DIR/.git" ]; then
@@ -167,10 +177,37 @@ if [ -f frontend/package.json ]; then
   cd "$APP_DIR"
 fi
 
-if ! command -v pm2 &> /dev/null; then
-  echo "[deploy] pm2 not found, installing..."
-  npm install -g pm2
+ensure_pm2() {
+  if command -v pm2 >/dev/null 2>&1; then
+    return 0
+  fi
+  local candidate
+  for candidate in \
+    "${HOME}/.npm-global/bin/pm2" \
+    "${HOME}/.local/bin/pm2" \
+    /usr/local/bin/pm2 \
+    /usr/bin/pm2
+  do
+    if [ -x "$candidate" ]; then
+      PATH="$(dirname "$candidate"):${PATH}"
+      export PATH
+      return 0
+    fi
+  done
+  echo "[deploy] pm2 not found, installing to ${HOME}/.npm-global (no root)..."
+  mkdir -p "${HOME}/.npm-global"
+  npm install -g pm2 --prefix "${HOME}/.npm-global"
+  PATH="${HOME}/.npm-global/bin:${PATH}"
+  export PATH
+  hash -r 2>/dev/null || true
+  command -v pm2 >/dev/null 2>&1
+}
+
+if ! ensure_pm2; then
+  echo "[deploy] ERROR: pm2를 설치하지 못했습니다."
+  exit 1
 fi
+echo "[deploy] pm2: $(command -v pm2)"
 echo "[deploy] pm2 restart all"
 pm2 restart all
 
