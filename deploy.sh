@@ -218,4 +218,24 @@ else
 fi
 pm2 save
 
+ensure_nginx_upload_limit() {
+  local conf="/etc/nginx/conf.d/oatstone-upload.conf"
+  if ! command -v nginx >/dev/null 2>&1; then
+    return 0
+  fi
+  if [ ! -d /etc/nginx/conf.d ]; then
+    return 0
+  fi
+  if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true >/dev/null 2>&1; then
+    echo "[deploy] nginx upload limit skipped (no passwordless sudo)"
+    return 0
+  fi
+  echo "[deploy] nginx client_max_body_size 50m"
+  printf '%s\n' "client_max_body_size 50m;" | sudo -n tee "$conf" >/dev/null
+  if sudo -n nginx -t >/dev/null 2>&1; then
+    sudo -n nginx -s reload || true
+  fi
+}
+ensure_nginx_upload_limit
+
 echo "[deploy] success $(date -Is)"

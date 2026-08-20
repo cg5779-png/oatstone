@@ -67,6 +67,10 @@ async function adminRequest<T>(path: string, fallback: string, options: RequestI
     throw new Error('서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인해 주세요.')
   }
 
+  if (res.status === 413) {
+    throw new Error('업로드 용량이 너무 큽니다. 이미지를 한 장씩 올리거나 용량을 줄여 주세요.')
+  }
+
   if (res.status === 401) {
     if (token) {
       onUnauthorized?.()
@@ -130,13 +134,42 @@ export async function deleteAdminProject(id: number): Promise<void> {
   })
 }
 
-export async function uploadAdminImages(id: number, files: File[]): Promise<AdminProjectDetail> {
+async function uploadOneAdminImage(id: number, file: File): Promise<AdminProjectDetail> {
   const body = new FormData()
-  files.forEach((file) => body.append('files', file))
+  body.append('files', file)
   return adminRequest(`/api/admin/projects/${id}/images`, '이미지를 업로드하지 못했습니다.', {
     method: 'POST',
     body,
   })
+}
+
+export async function uploadAdminImages(
+  id: number,
+  files: File[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<{ project: AdminProjectDetail; uploaded: number; failed: string[] }> {
+  let project: AdminProjectDetail | null = null
+  const failed: string[] = []
+
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index]
+    try {
+      project = await uploadOneAdminImage(id, file)
+    } catch {
+      failed.push(file.name || `파일 ${index + 1}`)
+    }
+    onProgress?.(index + 1, files.length)
+  }
+
+  if (!project) {
+    throw new Error('이미지를 업로드하지 못했습니다. jpg, png, webp, gif 파일인지 확인해 주세요.')
+  }
+
+  return {
+    project,
+    uploaded: files.length - failed.length,
+    failed,
+  }
 }
 
 export async function deleteAdminImage(projectId: number, imageId: number): Promise<AdminProjectDetail> {

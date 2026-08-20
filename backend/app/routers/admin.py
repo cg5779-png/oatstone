@@ -238,26 +238,40 @@ def upload_project_images(
 
     next_order = _next_image_sort_order(db, project.id)
     first_url: str | None = None
+    saved_urls: list[str] = []
 
-    for file in incoming:
-        ext = validate_image(file)
-        image_url = save_project_image(project.slug, next_order, file, ext)
-        db.add(
-            ProjectImage(
-                project_id=project.id,
-                image_url=image_url,
-                caption=f"{project.title} {next_order:02d}",
-                sort_order=next_order,
+    try:
+        for file in incoming:
+            ext = validate_image(file)
+            image_url = save_project_image(project.slug, next_order, file, ext)
+            saved_urls.append(image_url)
+            db.add(
+                ProjectImage(
+                    project_id=project.id,
+                    image_url=image_url,
+                    caption=f"{project.title} {next_order:02d}"[:200],
+                    sort_order=next_order,
+                )
             )
-        )
-        if first_url is None:
-            first_url = image_url
-        next_order += 1
+            if first_url is None:
+                first_url = image_url
+            next_order += 1
 
-    if not project.thumbnail_url and first_url:
-        project.thumbnail_url = first_url
+        if not project.thumbnail_url and first_url:
+            project.thumbnail_url = first_url
 
-    db.commit()
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        for url in saved_urls:
+            delete_managed_file(url)
+        raise
+    except Exception as exc:
+        db.rollback()
+        for url in saved_urls:
+            delete_managed_file(url)
+        raise HTTPException(status_code=500, detail="이미지를 저장하지 못했습니다. 다시 시도해 주세요.") from exc
+
     return _to_detail(_get_project_or_404(db, project.id))
 
 

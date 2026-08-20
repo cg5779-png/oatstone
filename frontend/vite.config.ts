@@ -5,6 +5,7 @@ const apiProxy = {
   '/api': {
     target: 'http://localhost:8000',
     changeOrigin: true,
+    timeout: 120000,
   },
   '/uploads': {
     target: 'http://localhost:8000',

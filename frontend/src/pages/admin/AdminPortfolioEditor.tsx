@@ -40,7 +40,9 @@ export default function AdminPortfolioEditor() {
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState('')
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [fileInputKey, setFileInputKey] = useState(0)
   const [error, setError] = useState('')
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
@@ -106,7 +108,12 @@ export default function AdminPortfolioEditor() {
         const filesToUpload = pendingFiles
         setPendingFiles([])
         if (filesToUpload.length) {
-          await uploadAdminImages(created.id, filesToUpload)
+          const result = await uploadAdminImages(created.id, filesToUpload)
+          if (result.failed.length) {
+            throw new Error(
+              `${result.uploaded}장은 추가됐지만 ${result.failed.length}장은 실패했습니다: ${result.failed.join(', ')}`,
+            )
+          }
         }
         navigate(`/admin/portfolio/${created.id}`, { replace: true })
       } else if (projectId) {
@@ -127,21 +134,35 @@ export default function AdminPortfolioEditor() {
   const onUpload = async () => {
     if (!projectId || pendingFiles.length === 0) return
     setUploading(true)
+    setUploadProgress(`0/${pendingFiles.length}`)
+    const startOrder = nextOrder
+    const total = pendingFiles.length
     try {
-      const updated = await uploadAdminImages(projectId, pendingFiles)
-      setProject(updated)
-      setPendingFiles([])
-      setToast({
-        message: `이미지를 ${pendingFiles.length}장 추가했습니다. 순서 ${nextOrder}부터 이어집니다.`,
-        type: 'success',
+      const result = await uploadAdminImages(projectId, pendingFiles, (done, count) => {
+        setUploadProgress(`${done}/${count}`)
       })
+      setProject(result.project)
+      setPendingFiles([])
+      setFileInputKey((key) => key + 1)
+      if (result.failed.length) {
+        setToast({
+          message: `${result.uploaded}장은 추가됐지만 ${result.failed.length}장은 실패했습니다: ${result.failed.join(', ')}`,
+          type: 'error',
+        })
+      } else {
+        setToast({
+          message: `이미지를 ${result.uploaded}장 추가했습니다. 순서 ${startOrder}부터 이어집니다.`,
+          type: 'success',
+        })
+      }
     } catch (err) {
       setToast({
-        message: err instanceof Error ? err.message : '업로드에 실패했습니다.',
+        message: err instanceof Error ? err.message : `이미지 ${total}장을 업로드하지 못했습니다.`,
         type: 'error',
       })
     } finally {
       setUploading(false)
+      setUploadProgress('')
     }
   }
 
@@ -297,6 +318,7 @@ export default function AdminPortfolioEditor() {
 
         <div className="admin-upload">
           <input
+            key={fileInputKey}
             type="file"
             accept="image/jpeg,image/png,image/webp,image/gif"
             multiple
@@ -312,7 +334,9 @@ export default function AdminPortfolioEditor() {
           )}
           {project && (
             <Button type="button" onClick={() => void onUpload()} disabled={uploading || pendingFiles.length === 0}>
-              {uploading ? '업로드 중…' : '기존 이미지 뒤에 추가'}
+              {uploading
+                ? `업로드 중… ${uploadProgress}`
+                : '기존 이미지 뒤에 추가'}
             </Button>
           )}
         </div>

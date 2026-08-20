@@ -6,8 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.requests import Request as StarletteRequest
 
 from app.config import CORS_ORIGINS, FRONTEND_DIST, UPLOAD_DIR
+from app.services.storage import MAX_UPLOAD_BYTES
 from app.database import SessionLocal, init_db
 from app.exceptions import validation_exception_handler
 from app.routers import admin, api
@@ -24,6 +26,16 @@ def bootstrap() -> None:
 
 
 bootstrap()
+
+_original_request_form = StarletteRequest.form
+
+
+def _request_form_with_large_uploads(self, *args, **kwargs):
+    kwargs.setdefault("max_part_size", MAX_UPLOAD_BYTES)
+    return _original_request_form(self, *args, **kwargs)
+
+
+StarletteRequest.form = _request_form_with_large_uploads  # type: ignore[method-assign]
 
 app = FastAPI(
     title="OATSTONE API",

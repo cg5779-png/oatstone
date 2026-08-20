@@ -8,7 +8,7 @@ from fastapi import HTTPException, UploadFile
 from app.config import UPLOAD_DIR
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 
 def _extension(filename: str | None) -> str:
@@ -25,9 +25,33 @@ def validate_image(file: UploadFile) -> str:
     return ext
 
 
+def _read_upload_bytes(file: UploadFile) -> bytes:
+    try:
+        file.file.seek(0)
+    except (OSError, AttributeError):
+        pass
+
+    try:
+        data = file.file.read()
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="이미지 파일을 읽지 못했습니다. 파일을 다시 선택해 주세요.",
+        ) from exc
+
+    if not data:
+        raise HTTPException(status_code=422, detail="빈 파일은 업로드할 수 없습니다.")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=422, detail="이미지 파일은 25MB 이하만 업로드할 수 있습니다.")
+    return data
+
+
 def save_project_image(slug: str, sort_order: int, file: UploadFile, ext: str) -> str:
     folder = UPLOAD_DIR / "portfolio" / slug
-    folder.mkdir(parents=True, exist_ok=True)
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="이미지 저장 폴더를 만들지 못했습니다.") from exc
 
     filename = f"{sort_order:03d}{ext}"
     destination = folder / filename
@@ -37,21 +61,12 @@ def save_project_image(slug: str, sort_order: int, file: UploadFile, ext: str) -
         destination = folder / filename
         suffix += 1
 
-    size = 0
+    data = _read_upload_bytes(file)
     try:
-        with destination.open("wb") as buffer:
-            while chunk := file.file.read(1024 * 64):
-                size += len(chunk)
-                if size > MAX_UPLOAD_BYTES:
-                    raise HTTPException(status_code=422, detail="이미지 파일은 10MB 이하만 업로드할 수 있습니다.")
-                buffer.write(chunk)
-    except HTTPException:
+        destination.write_bytes(data)
+    except OSError as exc:
         destination.unlink(missing_ok=True)
-        raise
-
-    if size == 0:
-        destination.unlink(missing_ok=True)
-        raise HTTPException(status_code=422, detail="빈 파일은 업로드할 수 없습니다.")
+        raise HTTPException(status_code=500, detail="이미지 파일을 저장하지 못했습니다.") from exc
 
     return f"/uploads/portfolio/{slug}/{filename}"
 
