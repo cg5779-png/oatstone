@@ -25,7 +25,7 @@ export default function Portfolio() {
     <section id="portfolio" className="portfolio fade-in" ref={ref as React.RefObject<HTMLElement>}>
       <div className="container">
         <h2 className="section-title">Portfolio</h2>
-        <p className="section-subtitle">OATSTONE이 만든 공간 디자인</p>
+        <p className="section-subtitle">OATSTONE이 만드는 공간 디자인</p>
 
         {loading ? (
           <div className="portfolio__loading">

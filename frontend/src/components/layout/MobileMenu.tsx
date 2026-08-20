@@ -1,5 +1,4 @@
 import { NAV_ITEMS, scrollToSection } from '../../constants/navigation'
-import Button from '../ui/Button'
 import './MobileMenu.css'
 
 interface MobileMenuProps {
@@ -31,9 +30,6 @@ export default function MobileMenu({ open, onClose }: MobileMenuProps) {
             </button>
           ))}
         </nav>
-        <Button size="lg" fullWidth onClick={() => navigate('contact')}>
-          프로젝트 의뢰하기
-        </Button>
       </div>
     </div>
   )

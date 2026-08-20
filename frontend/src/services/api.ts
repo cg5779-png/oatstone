@@ -19,14 +19,6 @@ export interface ProjectDetail extends Project {
   images: { id: number; image_url: string; caption: string | null }[]
 }
 
-export interface InquiryPayload {
-  name: string
-  email: string
-  phone: string
-  project_type: 'drawing' | '3d' | 'integrated' | 'other'
-  message: string
-}
-
 export const CATEGORY_LABELS: Record<string, string> = {
   drawing: '도면 작성',
   '3d': '3D 디자인',
@@ -59,16 +51,4 @@ export async function fetchProjects(): Promise<Project[]> {
 
 export async function fetchProject(id: number): Promise<ProjectDetail> {
   return requestJson<ProjectDetail>(`/api/projects/${id}`, '프로젝트를 불러오지 못했습니다.')
-}
-
-export async function submitInquiry(payload: InquiryPayload): Promise<{ message: string }> {
-  return requestJson<{ message: string }>(
-    '/api/inquiries',
-    '문의 접수에 실패했습니다. 잠시 후 다시 시도해 주세요.',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    },
-  )
 }
